@@ -1,0 +1,368 @@
+:root {
+  color-scheme: light;
+  --background: #f7f6f3;
+  --surface: #fff;
+  --surface-muted: #faf9f7;
+  --text: #242327;
+  --text-muted: #6c6871;
+  --border: #e6e2dd;
+  --border-strong: #d8d2ca;
+  --accent: #4f46e5;
+  --accent-dark: #4338ca;
+  --accent-soft: #eef2ff;
+  --success: #16794b;
+  --success-soft: #ecfdf3;
+  --warning: #9a6700;
+  --warning-soft: #fff8e6;
+  --danger: #b42318;
+  --danger-soft: #fef3f2;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+body {
+  width: 360px;
+  min-width: 360px;
+  margin: 0;
+  background: var(--background);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+:focus-visible {
+  outline: 3px solid rgb(79 70 229 / 28%);
+  outline-offset: 2px;
+}
+
+h1,
+h2,
+p,
+dl,
+dd {
+  margin-top: 0;
+}
+
+.popup-shell {
+  padding: 16px;
+}
+
+.topbar,
+.brand,
+.section-heading,
+.shortcut-row,
+.shortcut-action,
+.footer-actions {
+  display: flex;
+  align-items: center;
+}
+
+.topbar {
+  justify-content: space-between;
+  margin-bottom: 13px;
+}
+
+.brand {
+  gap: 9px;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 800;
+  box-shadow: 0 6px 15px rgb(79 70 229 / 18%);
+}
+
+.eyebrow {
+  margin-bottom: 1px;
+  color: var(--accent);
+  font-size: 0.57rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+h1 {
+  margin-bottom: 0;
+  font-size: 1.08rem;
+  line-height: 1.2;
+}
+
+h2 {
+  margin-bottom: 2px;
+  font-size: 0.92rem;
+  line-height: 1.25;
+}
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  padding: 0;
+  background: var(--surface);
+  color: #5b5660;
+  font-size: 1rem;
+}
+
+.icon-button:hover:not(:disabled),
+.secondary-button:hover:not(:disabled) {
+  border-color: #beb7ae;
+  background: var(--surface-muted);
+}
+
+.cleanup-card,
+.shortcut-row {
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(28 25 23 / 4%), 0 7px 22px rgb(28 25 23 / 5%);
+}
+
+.cleanup-card {
+  padding: 15px;
+}
+
+.section-heading {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-heading p,
+.shortcut-row p {
+  margin-bottom: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.state-badge {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #f0eeeb;
+  color: #625d65;
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
+.state-badge[data-state="running"] {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.state-badge[data-state="done"] {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.state-badge[data-state="error"],
+.state-badge[data-state="interrupted"] {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 13px 0 11px;
+}
+
+.stats > div {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 11px;
+  background: var(--surface-muted);
+}
+
+.stats dt {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.stats dd {
+  margin-bottom: 0;
+  color: var(--text);
+  font-size: 1.28rem;
+  font-weight: 780;
+  line-height: 1.25;
+}
+
+.cleanup-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 47px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.93rem;
+  font-weight: 760;
+  box-shadow: 0 7px 17px rgb(79 70 229 / 18%);
+}
+
+.cleanup-button:hover:not(:disabled) {
+  border-color: var(--accent-dark);
+  background: var(--accent-dark);
+}
+
+.button-icon {
+  display: grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  border-radius: 7px;
+  background: rgb(255 255 255 / 16%);
+  font-size: 0.76rem;
+}
+
+.scope-note {
+  margin: 9px 1px 0;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.operation-status {
+  margin-top: 10px;
+  border-radius: 9px;
+  padding: 9px 10px;
+  background: var(--accent-soft);
+  color: #393476;
+  font-size: 0.75rem;
+}
+
+.operation-status[data-kind="success"] {
+  background: var(--success-soft);
+  color: #12613d;
+}
+
+.operation-status[data-kind="warning"] {
+  background: var(--warning-soft);
+  color: #745000;
+}
+
+.operation-status[data-kind="error"] {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.operation-status p {
+  margin-bottom: 0;
+}
+
+.operation-details,
+.native-prompt-hint {
+  margin-top: 4px;
+  opacity: 0.84;
+  font-size: 0.69rem;
+}
+
+.native-prompt-hint {
+  font-weight: 680;
+}
+
+.load-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 9px;
+  border-radius: 9px;
+  padding: 8px 10px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.7rem;
+}
+
+.text-button {
+  border: 0;
+  padding: 2px;
+  background: transparent;
+  color: var(--accent-dark);
+  font-weight: 720;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.load-error .text-button {
+  flex: 0 0 auto;
+  color: var(--danger);
+}
+
+.shortcut-row {
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 12px 13px;
+}
+
+.shortcut-action {
+  flex: 0 0 auto;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 3px;
+}
+
+kbd {
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  padding: 3px 7px;
+  background: var(--surface-muted);
+  color: #3b3740;
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 720;
+}
+
+.footer-actions {
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.secondary-button {
+  flex: 1 1 0;
+  min-height: 36px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  padding: 7px 10px;
+  background: var(--surface);
+  color: #464149;
+  font-weight: 680;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+}

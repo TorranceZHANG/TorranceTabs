@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>标签看板</title>
+    <link rel="stylesheet" href="dashboard.css">
+  </head>
+  <body>
+    <main class="page-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">T</span>
+          <div>
+            <p class="eyebrow">TORRANCE TABS</p>
+            <h1>标签看板</h1>
+          </div>
+        </div>
+        <nav class="toolbar" aria-label="看板操作">
+          <button id="deduplicate-tabs" class="primary-button deduplicate-button" type="button" disabled>一键清理重复页</button>
+          <a class="secondary-button" href="settings.html">分组设置</a>
+          <button id="refresh-tabs" class="secondary-button" type="button" disabled>刷新列表</button>
+          <button id="apply-current-window" class="secondary-button" type="button" disabled>按规则整理当前窗口</button>
+        </nav>
+      </header>
+
+      <section class="overview" aria-labelledby="overview-title">
+        <div class="overview-heading">
+          <div>
+            <h2 id="overview-title">当前浏览概览</h2>
+            <p id="last-updated">正在读取标签页…</p>
+          </div>
+          <span id="automation-state" class="state-badge">读取中</span>
+        </div>
+        <dl class="stats-grid">
+          <div class="stat">
+            <dt>网页标签</dt>
+            <dd id="tab-count">—</dd>
+          </div>
+          <div class="stat">
+            <dt>站点</dt>
+            <dd id="site-count">—</dd>
+          </div>
+          <div class="stat">
+            <dt>额外重复</dt>
+            <dd id="duplicate-count">—</dd>
+          </div>
+          <div class="stat">
+            <dt>启用规则</dt>
+            <dd id="rule-count">—</dd>
+          </div>
+        </dl>
+        <p class="deduplication-note"><strong>一键清理重复页：</strong>跨普通窗口比较完整网址（包含查询参数和 # 片段），不受搜索筛选影响；共享组、无痕和分屏标签页会跳过。也可点击工具栏的扩展图标直接清理，或在快捷面板查看快捷键。</p>
+        <p id="organize-hint" class="organize-hint" hidden>自动分组已关闭。请先前往“分组设置”启用，再整理当前窗口。</p>
+      </section>
+
+      <div class="content-grid">
+        <section class="tabs-section" aria-labelledby="tabs-title">
+          <div class="section-heading">
+            <div>
+              <h2 id="tabs-title">按站点查看</h2>
+              <p>点击标题可切换到对应窗口和标签页。</p>
+            </div>
+            <label class="search-field" for="tab-search">
+              <span class="visually-hidden">搜索标签页</span>
+              <span class="search-icon" aria-hidden="true">⌕</span>
+              <input id="tab-search" type="search" placeholder="搜索标题或网址" autocomplete="off">
+            </label>
+          </div>
+
+          <div id="tabs-loading" class="empty-state">
+            <span class="empty-icon" aria-hidden="true">↗</span>
+            <h3>正在整理视图</h3>
+            <p>读取所有普通窗口中的网页标签。</p>
+          </div>
+          <div id="tabs-empty" class="empty-state" hidden>
+            <span class="empty-icon" aria-hidden="true">○</span>
+            <h3 id="tabs-empty-title">没有可显示的网页标签</h3>
+            <p id="tabs-empty-copy">打开一个 HTTP(S) 页面后，再刷新列表。</p>
+          </div>
+          <div id="site-grid" class="site-grid" aria-live="polite"></div>
+        </section>
+
+        <aside class="reading-panel" aria-labelledby="reading-title">
+          <div class="reading-heading">
+            <div>
+              <p class="eyebrow">READ LATER</p>
+              <h2 id="reading-title">稍后读</h2>
+            </div>
+            <span id="reading-count" class="count-badge">0</span>
+          </div>
+          <p class="reading-description">只保存链接，不会关闭当前标签页。</p>
+          <div id="reading-empty" class="reading-empty">
+            <p>列表还是空的。</p>
+            <span>在左侧标签条目中选择“稍后读”。</span>
+          </div>
+          <ul id="reading-list" class="reading-list" aria-live="polite"></ul>
+        </aside>
+      </div>
+
+      <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+    </main>
+
+    <template id="site-template">
+      <article class="site-card">
+        <header class="site-card-header">
+          <span class="site-mark" aria-hidden="true"></span>
+          <div class="site-title-wrap">
+            <h3 class="site-name"></h3>
+            <p class="site-summary"></p>
+          </div>
+        </header>
+        <ul class="tab-list"></ul>
+      </article>
+    </template>
+
+    <script type="module" src="dashboard.js"></script>
+  </body>
+</html>

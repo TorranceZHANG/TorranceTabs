@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>链接已打开</title>
+    <link rel="stylesheet" href="duplicate.css">
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="prompt-card" aria-labelledby="page-title">
+        <button id="close-prompt" class="close-button" type="button" aria-label="关闭提醒" title="关闭提醒">×</button>
+        <div class="brand-mark" aria-hidden="true">↗</div>
+        <p class="eyebrow">TORRANCE TABS</p>
+        <h1 id="page-title">链接已打开</h1>
+        <p id="summary" class="summary">正在检查已经打开的标签页…</p>
+
+        <div id="target-details" class="target-details" hidden>
+          <p id="target-title" class="target-title"></p>
+          <p id="target-url" class="target-url"></p>
+          <p id="match-count" class="match-count"></p>
+        </div>
+
+        <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true">正在读取重复标签信息…</div>
+
+        <div class="actions">
+          <button id="switch-existing" class="primary-button" type="button" disabled>跳转到已有标签</button>
+          <button id="open-new" class="secondary-button" type="button" disabled>仍然打开新标签</button>
+        </div>
+
+        <p id="choice-explanation" class="choice-explanation">请选择如何处理这次新开的标签。</p>
+
+        <div id="footer-links" class="footer-links" hidden>
+          <button id="retry-info" class="text-button" type="button" hidden>重新检测</button>
+          <a id="dashboard-link" href="dashboard.html" hidden>返回标签看板</a>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="duplicate.js"></script>
+  </body>
+</html>

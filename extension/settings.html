@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>前缀标签组设置</title>
+    <link rel="stylesheet" href="settings.css">
+  </head>
+  <body>
+    <main class="page-shell">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">TORRANCE TABS</p>
+          <h1>按网址前缀整理标签页</h1>
+          <p class="lead">新建标签页或网址变化时，扩展会按最长匹配前缀将页面归入同名标签组。</p>
+        </div>
+        <div class="header-actions">
+          <a class="dashboard-link" href="dashboard.html">打开标签看板</a>
+          <span class="local-badge" aria-label="设置仅保存在本机">仅本机</span>
+        </div>
+      </header>
+
+      <form id="settings-form" novalidate>
+        <section class="panel master-panel" aria-labelledby="master-title">
+          <div>
+            <h2 id="master-title">自动整理</h2>
+            <p>关闭后保留规则，但暂停后续自动归组。</p>
+          </div>
+          <label class="switch">
+            <input id="enabled" name="enabled" type="checkbox">
+            <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+            <span class="switch-label">启用</span>
+          </label>
+        </section>
+
+        <section class="panel preference-panel" aria-labelledby="duplicate-prompt-title">
+          <div>
+            <h2 id="duplicate-prompt-title">新标签重复提醒</h2>
+            <p>新开标签首次前往 HTTP(S) 页面时，若完整网址（包含查询参数和 # 片段）已存在，会在网页右上角显示小浮层。可跳转到已有标签并关闭这次新开的重复页，或保留新标签；直接关闭浮层也会保留新标签。</p>
+            <p class="preference-detail">已存在标签页内的普通导航不会提醒。固定、无痕、分屏和共享标签不处理；提醒出现前，目标页面可能已经开始请求。</p>
+          </div>
+          <label class="switch">
+            <input id="duplicate-prompt-enabled" name="duplicatePromptEnabled" type="checkbox">
+            <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+            <span class="switch-label">启用</span>
+          </label>
+        </section>
+
+        <section class="panel permission-panel" aria-labelledby="inline-permission-title">
+          <div>
+            <h2 id="inline-permission-title">网页内提醒权限</h2>
+            <p>需要网页访问权，才能把重复链接提醒放在当前网页内。提醒完全在本机执行，不读取网页正文，也不会上传数据。</p>
+            <p class="preference-detail">授权范围为 HTTP/HTTPS 网站；Chrome 会显示网站数据访问权限说明。只在检测到重复链接时添加浮层，可随时撤销授权。</p>
+            <p id="inline-permission-status" class="permission-status" role="status" aria-live="polite">正在检查授权状态…</p>
+          </div>
+          <div class="permission-actions">
+            <button id="grant-inline-permission" class="primary-button" type="button">授权网页内提醒</button>
+            <button id="revoke-inline-permission" class="secondary-button" type="button" disabled>撤销授权</button>
+          </div>
+        </section>
+
+        <div id="external-notice" class="external-notice" hidden>
+          <p>设置已在其他页面中更改。为保护当前未保存的编辑，本页没有自动覆盖。</p>
+          <button id="reload-external" class="text-button" type="button">载入外部更改</button>
+        </div>
+
+        <section class="panel rules-panel" aria-labelledby="rules-title">
+          <div class="section-heading">
+            <div>
+              <h2 id="rules-title">匹配规则</h2>
+              <p>更具体的前缀优先；没有匹配时，标签页保持原状。</p>
+            </div>
+            <div class="heading-actions">
+              <button id="fill-examples" class="secondary-button" type="button">填入示例</button>
+              <button id="add-rule" class="primary-button" type="button">
+                <span aria-hidden="true">＋</span> 添加规则
+              </button>
+            </div>
+          </div>
+
+          <div id="empty-state" class="empty-state">
+            <div class="empty-icon" aria-hidden="true">↗</div>
+            <h3>还没有规则</h3>
+            <p>添加网址前缀和组名，或先填入示例看看效果。</p>
+          </div>
+
+          <div id="rules-list" class="rules-list" aria-live="polite"></div>
+
+          <section class="preview" aria-labelledby="preview-title">
+            <div class="preview-copy">
+              <h3 id="preview-title">匹配预览</h3>
+              <p>输入完整网址，预览当前表单中会采用的规则。</p>
+            </div>
+            <div class="preview-controls">
+              <label for="preview-url">网址</label>
+              <input id="preview-url" type="text" inputmode="url" placeholder="https://example.com/projects/">
+              <output id="preview-result" for="preview-url">输入网址后查看匹配结果</output>
+            </div>
+          </section>
+        </section>
+
+        <section class="behavior-note" aria-label="使用说明">
+          <span class="note-icon" aria-hidden="true">i</span>
+          <div>
+            <strong>保存后，规则会在后续新建或跳转页面时生效。</strong>
+            <p>要立即整理已经打开的标签页，请使用“保存并整理当前窗口”。规则颜色只用于新建组；已有同名组会保留当前颜色和折叠状态。固定、无痕、分屏标签页以及内部页面会跳过。共享组及其中的标签不参与整理；目标名称只有共享组时也会跳过。</p>
+          </div>
+        </section>
+
+        <footer class="form-footer">
+          <p class="privacy-note">规则保存在 Chrome 本机存储中，不会上传。</p>
+          <div class="footer-actions">
+            <button id="save" class="secondary-button action-button" type="submit">保存</button>
+            <button id="save-and-apply" class="primary-button action-button" type="button">保存并整理当前窗口</button>
+          </div>
+        </footer>
+      </form>
+
+      <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+    </main>
+
+    <template id="rule-template">
+      <article class="rule-card">
+        <div class="rule-card-heading">
+          <span class="rule-number"></span>
+          <label class="compact-toggle">
+            <input class="rule-enabled" type="checkbox">
+            <span>启用此规则</span>
+          </label>
+          <button class="delete-rule icon-button" type="button" aria-label="删除规则" title="删除规则">×</button>
+        </div>
+        <div class="rule-fields">
+          <label class="field prefix-field">
+            <span>网址前缀</span>
+            <input class="rule-prefix" type="url" inputmode="url" placeholder="https://example.com/" required>
+          </label>
+          <label class="field group-field">
+            <span>标签组名称</span>
+            <input class="rule-group" type="text" maxlength="80" placeholder="例如：工作" required>
+          </label>
+          <label class="field color-field">
+            <span>颜色</span>
+            <span class="color-select-wrap">
+              <span class="color-dot" aria-hidden="true"></span>
+              <select class="rule-color"></select>
+            </span>
+          </label>
+        </div>
+      </article>
+    </template>
+
+    <script type="module" src="settings.js"></script>
+  </body>
+</html>

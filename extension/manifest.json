@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "TorranceTabs · 标签管理",
+  "version": "1.5.0",
+  "minimum_chrome_version": "110",
+  "description": "按网址前缀自动分组，清理重复标签，并在新开重复链接时提供网页内提醒。",
+  "permissions": [
+    "tabs",
+    "tabGroups",
+    "storage"
+  ],
+  "optional_permissions": [
+    "scripting"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "一键清理重复页 · 标签工具",
+    "default_popup": "quick.html"
+  },
+  "commands": {
+    "deduplicate-tabs": {
+      "suggested_key": {
+        "default": "Alt+Shift+D",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "一键清理重复标签页（相同完整网址保留一份）"
+    }
+  },
+  "options_ui": {
+    "page": "settings.html",
+    "open_in_tab": true
+  },
+  "chrome_url_overrides": {
+    "newtab": "dashboard.html"
+  }
+}

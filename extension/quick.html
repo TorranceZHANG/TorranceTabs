@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>标签快捷清理</title>
+    <link rel="stylesheet" href="quick.css">
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">T</span>
+          <div>
+            <p class="eyebrow">TORRANCE TABS</p>
+            <h1>快捷清理</h1>
+          </div>
+        </div>
+        <button id="refresh-data" class="icon-button" type="button" aria-label="刷新状态" title="刷新状态">↻</button>
+      </header>
+
+      <section class="cleanup-card" aria-labelledby="cleanup-title">
+        <div class="section-heading">
+          <div>
+            <h2 id="cleanup-title">重复标签</h2>
+            <p id="snapshot-time">正在读取普通窗口中的网页标签…</p>
+          </div>
+          <span id="cleanup-state" class="state-badge">读取中</span>
+        </div>
+
+        <dl class="stats" aria-label="标签快照">
+          <div>
+            <dt>网页标签</dt>
+            <dd id="tab-count">—</dd>
+          </div>
+          <div>
+            <dt>额外重复</dt>
+            <dd id="duplicate-count">—</dd>
+          </div>
+        </dl>
+
+        <button id="cleanup-tabs" class="cleanup-button" type="button" disabled>
+          <span class="button-icon" aria-hidden="true">✓</span>
+          <span id="cleanup-button-label">一键清理重复页</span>
+        </button>
+
+        <p class="scope-note">跨普通窗口按完整网址合并。共享、无痕、分屏和加载中的标签会跳过；优先保留正在使用、固定、播放或最近访问的一份。</p>
+
+        <div id="operation-status" class="operation-status" role="status" aria-live="polite" aria-atomic="true">
+          <p id="operation-summary">正在读取上次清理状态…</p>
+          <p id="operation-details" class="operation-details" hidden></p>
+          <p id="native-prompt-hint" class="native-prompt-hint" hidden>仍在等待 Chrome 完成关闭；如出现原生关闭提示，请先处理。</p>
+        </div>
+
+        <div id="load-error" class="load-error" role="alert" hidden>
+          <span id="load-error-text"></span>
+          <button id="retry-load" class="text-button" type="button">重新读取</button>
+        </div>
+      </section>
+
+      <section class="shortcut-row" aria-labelledby="shortcut-title">
+        <div>
+          <h2 id="shortcut-title">键盘快捷键</h2>
+          <p>无需打开面板也能开始清理。</p>
+        </div>
+        <div class="shortcut-action">
+          <kbd id="shortcut-value">读取中</kbd>
+          <button id="edit-shortcut" class="text-button" type="button">修改快捷键</button>
+        </div>
+      </section>
+
+      <nav class="footer-actions" aria-label="扩展页面">
+        <button id="open-dashboard" class="secondary-button" type="button">标签看板</button>
+        <button id="open-settings" class="secondary-button" type="button">分组设置</button>
+      </nav>
+    </main>
+
+    <script type="module" src="quick.js"></script>
+  </body>
+</html>

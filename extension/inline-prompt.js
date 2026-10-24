@@ -1,0 +1,390 @@
+(() => {
+  const STATE_KEY = '__prefixTabGroupsInlinePromptState__';
+  const result = { url: location.href, ready: Boolean(document.documentElement) };
+
+  if (globalThis[STATE_KEY]) return result;
+
+  const state = { active: null, invalid: false };
+  globalThis[STATE_KEY] = state;
+
+  function runtimeId() {
+    try {
+      return typeof chrome !== 'undefined' && chrome.runtime?.id
+        ? chrome.runtime.id
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function httpUrl(value) {
+    if (typeof value !== 'string') return null;
+    try {
+      const url = new URL(value);
+      return ['http:', 'https:'].includes(url.protocol) ? url : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function validSender(sender) {
+    const id = runtimeId();
+    return Boolean(id) && sender?.id === id && globalThis.top === globalThis;
+  }
+
+  function validToken(token) {
+    return typeof token === 'string' && token.length > 0 && token.length <= 512;
+  }
+
+  function currentActive() {
+    if (state.active && !state.active.host.isConnected) {
+      document.removeEventListener('keydown', state.active.escapeHandler, true);
+      state.active = null;
+    }
+    return state.active;
+  }
+
+  function removePrompt(token) {
+    const active = currentActive();
+    if (!active || (token && active.token !== token)) return false;
+    document.removeEventListener('keydown', active.escapeHandler, true);
+    active.host.remove();
+    state.active = null;
+    return true;
+  }
+
+  function notifyKeep(token) {
+    if (!runtimeId()) return;
+    try {
+      const request = chrome.runtime.sendMessage({
+        type: 'INLINE_DUPLICATE_CHOOSE',
+        token,
+        choice: 'keep',
+      });
+      if (request?.catch) request.catch(() => {});
+    } catch {
+      // The overlay is already gone; the backend cleans stale state later.
+    }
+  }
+
+  function keepAndRemove(active) {
+    if (currentActive() !== active) return;
+    const { token } = active;
+    removePrompt(token);
+    notifyKeep(token);
+  }
+
+  function terminalCommunicationFailure(error) {
+    if (!runtimeId()) return true;
+    const message = String(error?.message || error || '');
+    return /Extension context invalidated|Receiving end does not exist|Could not establish connection/i.test(message)
+      || /(?:页内提醒|提醒|token).*(?:失效|无效|过期|不存在)/i.test(message)
+      || /(?:失效|无效|过期|不存在).*(?:页内提醒|提醒|token)/i.test(message)
+      || /权限已撤销|页内提醒已关闭/i.test(message);
+  }
+
+  function element(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function buildPrompt(message) {
+    const rawCount = Number(message.count);
+    const duplicateCount = Number.isFinite(rawCount) ? Math.max(1, Math.floor(rawCount)) : 1;
+    const host = document.createElement('prefix-tab-groups-inline-prompt');
+    host.style.setProperty('all', 'initial', 'important');
+    host.style.setProperty('position', 'fixed', 'important');
+    host.style.setProperty('top', '14px', 'important');
+    host.style.setProperty('right', '14px', 'important');
+    host.style.setProperty('z-index', '2147483647', 'important');
+    host.style.setProperty('display', 'block', 'important');
+    host.style.setProperty('width', 'min(360px, calc(100vw - 28px))', 'important');
+    host.style.setProperty('max-width', '360px', 'important');
+    host.style.setProperty('color-scheme', 'light', 'important');
+    host.style.setProperty('contain', 'layout style', 'important');
+
+    const shadow = host.attachShadow({ mode: 'closed' });
+    const style = document.createElement('style');
+    style.textContent = `
+      :host {
+        display: block !important;
+        box-sizing: border-box !important;
+        color: #242327 !important;
+        color-scheme: light !important;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+        line-height: 1.45 !important;
+        text-align: left !important;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      .card {
+        overflow: hidden;
+        border: 1px solid #ded9d2;
+        border-radius: 14px;
+        padding: 15px;
+        background: #fff;
+        box-shadow: 0 2px 5px rgb(28 25 23 / 10%), 0 15px 38px rgb(28 25 23 / 18%);
+        color: #242327;
+      }
+      .header { display: flex; align-items: flex-start; gap: 10px; }
+      .mark {
+        display: grid;
+        flex: 0 0 auto;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+        background: #eef2ff;
+        color: #4f46e5;
+        font-size: 15px;
+        font-weight: 800;
+      }
+      .heading { min-width: 0; flex: 1 1 auto; }
+      .title { margin: 0; color: #242327; font-size: 15px; font-weight: 750; line-height: 1.25; }
+      .subtitle { margin: 2px 0 0; color: #6c6871; font-size: 12px; }
+      button {
+        margin: 0;
+        font: inherit;
+        text-transform: none;
+        cursor: pointer;
+      }
+      button:focus-visible { outline: 3px solid rgb(79 70 229 / 30%); outline-offset: 2px; }
+      button:disabled { cursor: not-allowed; opacity: .58; }
+      .close {
+        display: grid;
+        flex: 0 0 auto;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 0;
+        background: transparent;
+        color: #716b74;
+        font-size: 18px;
+        line-height: 1;
+      }
+      .close:hover { border-color: #e6e2dd; background: #faf9f7; color: #242327; }
+      .target {
+        margin-top: 11px;
+        border: 1px solid #e6e2dd;
+        border-radius: 10px;
+        padding: 9px 10px;
+        background: #faf9f7;
+      }
+      .target-title {
+        overflow: hidden;
+        margin: 0;
+        color: #343138;
+        font-size: 12px;
+        font-weight: 700;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .url {
+        max-height: 34px;
+        margin: 3px 0 0;
+        overflow: auto;
+        overflow-wrap: anywhere;
+        color: #6c6871;
+        font-size: 11px;
+        scrollbar-width: thin;
+      }
+      .count { margin: 7px 0 0; color: #4338ca; font-size: 11px; font-weight: 680; }
+      .status {
+        margin: 9px 0 0;
+        border-radius: 8px;
+        padding: 7px 9px;
+        background: #eef2ff;
+        color: #393476;
+        font-size: 11px;
+      }
+      .status.error { background: #fef3f2; color: #b42318; }
+      .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 10px; }
+      .action {
+        min-height: 36px;
+        border-radius: 8px;
+        padding: 7px 9px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .switch { border: 1px solid #4f46e5; background: #4f46e5; color: #fff; }
+      .switch:hover:not(:disabled) { border-color: #4338ca; background: #4338ca; }
+      .keep { border: 1px solid #d8d2ca; background: #fff; color: #37343b; }
+      .keep:hover:not(:disabled) { border-color: #bcb5ac; background: #faf9f7; }
+      @media (max-width: 390px) {
+        .actions { grid-template-columns: 1fr; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { transition-duration: .01ms !important; }
+      }
+    `;
+
+    const card = element('section', 'card');
+    card.setAttribute('role', 'region');
+    card.setAttribute('aria-label', '重复链接提醒');
+
+    const header = element('div', 'header');
+    const mark = element('span', 'mark', '↗');
+    mark.setAttribute('aria-hidden', 'true');
+    const heading = element('div', 'heading');
+    heading.append(
+      element('p', 'title', '链接已打开'),
+      element('p', 'subtitle', '这个完整网址已在其他标签页中打开。'),
+    );
+    const close = element('button', 'close', '×');
+    close.type = 'button';
+    close.setAttribute('aria-label', '关闭并保留新标签');
+    close.title = '关闭并保留新标签';
+    header.append(mark, heading, close);
+
+    const target = element('div', 'target');
+    target.append(
+      element('p', 'target-title', typeof message.title === 'string' && message.title.trim()
+        ? message.title.trim() : message.url),
+      element('p', 'url', message.url),
+      element('p', 'count', `已找到 ${duplicateCount} 个相同标签`),
+    );
+
+    const status = element('p', 'status', '请选择跳转到已打开的标签，或保留这个新标签。');
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    const actions = element('div', 'actions');
+    const switchButton = element('button', 'action switch', '跳转到已打开');
+    switchButton.type = 'button';
+    const keepButton = element('button', 'action keep', '保留新标签');
+    keepButton.type = 'button';
+    actions.append(switchButton, keepButton);
+    card.append(header, target, status, actions);
+    shadow.append(style, card);
+
+    const active = {
+      token: message.token,
+      url: message.url,
+      host,
+      status,
+      switchButton,
+      keepButton,
+      closeButton: close,
+      busy: false,
+      escapeHandler: null,
+    };
+
+    function handleFailure(error) {
+      if (currentActive() !== active) return;
+      if (terminalCommunicationFailure(error)) {
+        removePrompt(active.token);
+        return;
+      }
+      active.busy = false;
+      switchButton.disabled = false;
+      switchButton.textContent = '重试跳转';
+      status.textContent = '未能跳转。你可以重试或保留新标签。';
+      status.classList.add('error');
+    }
+
+    switchButton.addEventListener('click', (event) => {
+      if (!event.isTrusted) return;
+      if (active.busy || currentActive() !== active) return;
+      if (location.href !== active.url || !httpUrl(location.href)) {
+        removePrompt(active.token);
+        return;
+      }
+      if (!runtimeId()) {
+        removePrompt(active.token);
+        return;
+      }
+      active.busy = true;
+      switchButton.disabled = true;
+      switchButton.textContent = '正在跳转…';
+      status.textContent = '正在切换到已打开的标签…';
+      status.classList.remove('error');
+
+      let request;
+      try {
+        request = chrome.runtime.sendMessage({
+          type: 'INLINE_DUPLICATE_CHOOSE',
+          token: active.token,
+          choice: 'switch',
+        });
+      } catch (error) {
+        handleFailure(error);
+        return;
+      }
+      Promise.resolve(request)
+        .then((response) => {
+          if (!response?.ok) throw new Error(response?.error || '未能跳转');
+          if (response.closed === false) {
+            throw new Error('已有标签已定位，但新标签未能关闭。你可以重试或保留新标签');
+          }
+          removePrompt(active.token);
+        })
+        .catch(handleFailure);
+    });
+
+    keepButton.addEventListener('click', (event) => {
+      if (event.isTrusted) keepAndRemove(active);
+    });
+    close.addEventListener('click', (event) => {
+      if (event.isTrusted) keepAndRemove(active);
+    });
+    active.escapeHandler = (event) => {
+      if (event.isTrusted && event.key === 'Escape') keepAndRemove(active);
+    };
+
+    return active;
+  }
+
+  function showPrompt(message) {
+    if (state.invalid
+      || !document.documentElement
+      || !validToken(message.token)
+      || !httpUrl(location.href)
+      || message.url !== location.href) {
+      return { shown: false, ready: false };
+    }
+
+    const existing = currentActive();
+    if (existing?.token === message.token) return { shown: true };
+    if (existing) {
+      const oldToken = existing.token;
+      removePrompt(oldToken);
+      notifyKeep(oldToken);
+    }
+
+    const active = buildPrompt(message);
+    state.active = active;
+    document.documentElement.append(active.host);
+    document.addEventListener('keydown', active.escapeHandler, true);
+    return { shown: true };
+  }
+
+  globalThis.addEventListener('pagehide', () => {
+    state.invalid = true;
+    removePrompt();
+  }, { once: true });
+
+  if (globalThis.top === globalThis) {
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (!validSender(sender) || !message || typeof message !== 'object') return false;
+
+      if (message.type === 'INLINE_DUPLICATE_SHOW') {
+        sendResponse(showPrompt(message));
+        return false;
+      }
+      if (message.type === 'INLINE_DUPLICATE_HIDE') {
+        sendResponse({ hidden: validToken(message.token) && removePrompt(message.token) });
+        return false;
+      }
+      if (message.type === 'INLINE_DUPLICATE_PING') {
+        const active = state.invalid ? null : currentActive();
+        sendResponse({ token: active?.token ?? null, url: location.href });
+        return false;
+      }
+      return false;
+    });
+  }
+
+  return result;
+})();
