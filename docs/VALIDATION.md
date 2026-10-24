@@ -1,30 +1,21 @@
-# 1.5.0 验证记录
+# 1.5.1 验证记录
 
-- 基线：已验证的前缀分组扩展 1.5.0（116 项 Node 测试）；新增独立仓库、安装/卸载、打包和发布流程。
-- 源码内容指纹 SHA-256：`b250f6e7c4859c1334d8295f4ed65c116bc49f31d7b8d5070258e43170df3fc2`。计算所有源码文件的相对路径→SHA-256 映射，再对排序后的 JSON 取 SHA-256；排除 `.git`、`dist`、`__pycache__`、`.pyc`、macOS 元数据及本记录自身。
-- 发布 ZIP：`TorranceTabs-v1.5.0.zip`，SHA-256：`9858c0c96f04fadae2f7930f09dc886c2b411b3798a7f15a0a225b6864bc9ee9`。
-- 构建模式：原生 ES Modules/Manifest V3，无生产依赖；安装器只使用 Python 标准库和 curl。
+- 基线：`3e571d3bc41ab2af341b06da0ac88237e76593a0` 加本次补丁：移除新标签页接管、版本升至 1.5.1、更新说明与发布包测试版本读取。
+- 源码内容指纹 SHA-256：`15c8013a130dcb4708a7371328b16bee0fb711a82ebdefbe0cad2d1aad88f786`。计算相对路径到文件 SHA-256 的映射，使用排序且紧凑的 JSON 再取 SHA-256；排除 `.git`、`dist`、`__pycache__`、`node_modules`、`.pyc`、macOS 元数据及本记录自身。
+- 发布 ZIP：`TorranceTabs-v1.5.1.zip`，SHA-256：`ed333080d69de4d8818ded31d21a502c1139c3a3a748bd4640d60d4790263247`。
+- 构建模式：原生 ES Modules / Manifest V3，无生产依赖；安装器只使用 Python 标准库和 curl。检查命令未使用额外 flags。
 
 ## 实际执行
 
-| 环境 | 命令 | 结果 |
+| 环境 | 命令 / 检查 | 结果 |
 | --- | --- | --- |
-| macOS，Node 22.22.3，Python 3.13 | `make check test package` | 退出码 0；116 扩展测试、20 安装器测试通过 |
-| Linux，`/usr/local/bin/node` 22.9.0，`/usr/bin/python3` 3.6.8 | `make check test package` | 退出码 0；116 扩展测试、20 安装器测试通过 |
-| Linux | 在 dist 中运行 `sha256sum -c TorranceTabs-v1.5.0.zip.sha256` | 退出码 0 |
-| Linux | `python3 -m zipfile -t TorranceTabs-v1.5.0.zip` | 退出码 0 |
-| 独立审查 | 安装器、扩展、语法、版本、重复打包、离线安装/预演/卸载 | 全通过；最终无阻断问题 |
+| macOS，`/opt/homebrew/bin/node` 24.10.0、`/opt/homebrew/bin/python3` 3.13.7 | `make check test package` | 退出码 0；116 扩展测试、20 安装器测试通过，无跳过 |
+| zhr Linux，`/usr/local/bin/node` 22.9.0、`/usr/bin/python3` 3.6.8 | `make check test package` | 退出码 0；116 扩展测试、20 安装器测试通过，无跳过 |
+| zhr Linux | `python3 -m zipfile -t dist/TorranceTabs-v1.5.1.zip`；在 dist 中执行 `sha256sum -c TorranceTabs-v1.5.1.zip.sha256` | 均退出码 0；两台机器的发布包 SHA-256 一致 |
+| macOS，隔离临时目录 | 使用真实 1.5.0 发布 ZIP 安装，再使用 1.5.1 发布 ZIP 更新并检查安装结果 | 退出码 0；新版不含 `chrome_url_overrides`，旧版备份仍保留该配置；权限、后台、工具栏、快捷键及设置入口与旧版一致，看板文件保留 |
 
-两台机器的源码内容指纹和生成的发布包字节一致。测试保留全部断言，没有跳过失败场景。Lead 亲自复跑最终全部检查；执行日志保存在维护工作区，未纳入公开源码以免包含本机路径。
-
-## 修复和回归覆盖
-
-- 更新恢复使用明确的外部事务记录，不根据活动目录缺失猜测或扫描历史备份；正常卸载后，失败重装不会复活旧版本。
-- 卸载先验证归属、取消并同步事务记录，再将活动目录移动到可恢复位置。
-- dry-run 不创建安装父目录、活动目录或锁文件，不恢复旧安装。
-- ASCII locale 下 CLI 明确输出 UTF-8，测试按同一契约解码，已在真实 Python 3.6 环境运行。
-- SHA/版本/入口校验、ZIP 路径逃逸、符号链接、特殊文件、重复/大小写冲突和解压上限；锁、回滚与进程中断恢复均有隔离测试。
+日志保存在维护工作区：本机 `outputs/TorranceTabs-v1.5.1-local-validation.log`，zhr `code/TorranceTabs-v1.5.1-validation.log`。检查的是本次相同源码；传输仅使用 SSH 标准输入。1.5.0 的历史验证记录保留在 Git 标签中。
 
 ## 范围
 
-安装器测试只使用隔离临时目录，不操作真实 Chrome、当前用户规则或真实安装目录。扩展测试模拟 Chrome API，不替代实际浏览器对扩展加载、快捷键、可选权限和原生关闭提示的联调。未进行断电级存储故障注入。正式 GitHub Release 与网络下载须发布后另行确认，本记录不以离线验证替代公网下载验证。
+安装器和升级检查使用隔离临时目录，不操作真实 Chrome 配置、扩展注册、规则或稍后读。扩展测试模拟 Chrome API；本次未在真实 Chrome 中重新加载验证。实际更新仍需在 Chrome 扩展管理页点击“重新加载”，再新建标签页。GitHub Actions 与正式资产应在推送发布后另行核对，离线验证不替代公网下载验证。

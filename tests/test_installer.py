@@ -15,6 +15,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 MANAGER = REPO / "scripts" / "manage.py"
 PACKAGER = REPO / "scripts" / "package_release.py"
+RELEASE_VERSION = (REPO / "VERSION").read_text(encoding="ascii").strip()
 OWNER_FILE = ".torrance-tabs-owner.json"
 TRANSACTION_FILE = ".TorranceTabs.transaction.json"
 
@@ -436,13 +437,13 @@ class InstallerTests(unittest.TestCase):
     def test_packager_outputs_installable_production_archive(self):
         output = self.temporary / "dist"
         result = subprocess.run(
-            [sys.executable, str(PACKAGER), "--version", "1.5.0", "--output-dir", str(output)],
+            [sys.executable, str(PACKAGER), "--version", RELEASE_VERSION, "--output-dir", str(output)],
             encoding="utf-8", universal_newlines=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        archive = output / "TorranceTabs-v1.5.0.zip"
+        archive = output / ("TorranceTabs-v%s.zip" % RELEASE_VERSION)
         sidecar = Path(str(archive) + ".sha256")
         self.assertTrue(archive.is_file())
         self.assertTrue(sidecar.is_file())
@@ -457,7 +458,7 @@ class InstallerTests(unittest.TestCase):
             "install",
             "--source", str(archive),
             "--checksum-file", str(sidecar),
-            "--version", "1.5.0",
+            "--version", RELEASE_VERSION,
         )
         self.assertEqual(installed.returncode, 0, installed.stderr)
 

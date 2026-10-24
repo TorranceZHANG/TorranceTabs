@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TorranceTabs · 标签管理",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "minimum_chrome_version": "110",
   "description": "按网址前缀自动分组，清理重复标签，并在新开重复链接时提供网页内提醒。",
   "permissions": [
@@ -36,8 +36,5 @@
   "options_ui": {
     "page": "settings.html",
     "open_in_tab": true
-  },
-  "chrome_url_overrides": {
-    "newtab": "dashboard.html"
   }
 }
