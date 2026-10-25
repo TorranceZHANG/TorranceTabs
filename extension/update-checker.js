@@ -1,10 +1,12 @@
 const ENDPOINT = 'https://api.github.com/repos/TorranceZHANG/TorranceTabs/releases/latest';
+const RELEASE_PAGE = 'https://github.com/TorranceZHANG/TorranceTabs/releases/latest';
 const VERSION = /^v?(\d+)\.(\d+)\.(\d+)$/;
 const MAX_BYTES = 128 * 1024;
 
 function parseVersion(value) {
   const match = typeof value === 'string' && value.match(VERSION);
-  return match ? match.slice(1).map(Number) : null;
+  const parts = match ? match.slice(1).map(Number) : null;
+  return parts?.every(Number.isSafeInteger) ? parts : null;
 }
 function newer(latest, current) {
   for (let index = 0; index < 3; index += 1) {
@@ -47,6 +49,20 @@ export function createUpdateChecker(api, fetchImpl = globalThis.fetch, timeoutMs
     try {
       response = await fetchImpl(ENDPOINT, { method: 'GET', credentials: 'omit', referrerPolicy: 'no-referrer',
         redirect: 'error', cache: 'no-store', signal: controller.signal, headers: { Accept: 'application/vnd.github+json' } });
+      if (response.status === 403 || response.status === 429) {
+        await response.body?.cancel?.();
+        let alreadyAllowed = false;
+        try { alreadyAllowed = await api.permissions?.contains({ origins: ['https://github.com/*'] }) === true; }
+        catch { /* Do not request or expand access for the fallback. */ }
+        if (!alreadyAllowed) return { current, latest: null, available: null, manual: true, url: RELEASE_PAGE };
+        const page = await fetchImpl(RELEASE_PAGE, { method: 'HEAD', credentials: 'omit',
+          referrerPolicy: 'no-referrer', redirect: 'follow', cache: 'no-store', signal: controller.signal });
+        if (!page.ok) throw Error(`GitHub 发布页返回 ${page.status}。`);
+        const match = typeof page.url === 'string' && page.url.match(/^https:\/\/github\.com\/TorranceZHANG\/TorranceTabs\/releases\/tag\/v(\d+\.\d+\.\d+)$/);
+        const latestParts = match && parseVersion(match[1]);
+        if (!latestParts) throw Error('发布页版本链接不符合预期。');
+        return { current, latest: latestParts.join('.'), available: newer(latestParts, currentParts), url: page.url };
+      }
       if (!response.ok) throw Error(`GitHub 返回 ${response.status}。`);
       const payload = JSON.parse(await limitedText(response));
       const latestParts = parseVersion(payload.tag_name);

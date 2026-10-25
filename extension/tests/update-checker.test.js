@@ -40,3 +40,46 @@ test('超时只报告失败，不自动重试请求', async () => {
   await assert.rejects(check(), /超时/);
   assert.equal(calls, 1);
 });
+
+test('API403/429仅在已有权限时用固定发布页HEAD，不额外请求权限', async () => {
+  for (const status of [403, 429]) {
+    const calls = [];
+    const allowed = { runtime: api.runtime, permissions: {
+      async contains(value) { assert.deepEqual(value, { origins: ['https://github.com/*'] }); return true; },
+      async request() { throw Error('Must never expand fallback permissions'); },
+    } };
+    const result = await createUpdateChecker(allowed, async (url, options) => {
+      calls.push(url);
+      assert.equal(options.credentials, 'omit');
+      assert.equal(options.referrerPolicy, 'no-referrer');
+      if (calls.length === 1) return { ok: false, status, body: null };
+      assert.equal(url, 'https://github.com/TorranceZHANG/TorranceTabs/releases/latest');
+      assert.equal(options.method, 'HEAD');
+      return { ok: true, url: 'https://github.com/TorranceZHANG/TorranceTabs/releases/tag/v1.7.1',
+        async text() { throw Error('Must not read HTML'); } };
+    })();
+    assert.equal(result.latest, '1.7.1');
+    assert.equal(calls.length, 2);
+  }
+});
+
+test('API受限且无既有GitHub授权时只返回手动入口，不发额外请求', async () => {
+  let calls = 0;
+  const result = await createUpdateChecker(api, async () => { calls++; return { ok: false, status: 403, body: null }; })();
+  assert.deepEqual(result, { current: '1.6.0', latest: null, available: null, manual: true,
+    url: 'https://github.com/TorranceZHANG/TorranceTabs/releases/latest' });
+  assert.equal(calls, 1);
+});
+
+test('发布页回退拒绝其他仓库或非数字版本，不掩盖其他API错误', async () => {
+  const allowed = { runtime: api.runtime, permissions: { contains: async () => true } };
+  for (const url of ['https://evil.test/v1.7.0', 'https://github.com/other/repo/releases/tag/v1.7.0',
+    'https://github.com/TorranceZHANG/TorranceTabs/releases/tag/beta']) {
+    let calls = 0;
+    await assert.rejects(createUpdateChecker(allowed, async () => ++calls === 1
+      ? { ok: false, status: 403, body: null } : { ok: true, url })(), /版本链接/);
+  }
+  let calls = 0;
+  await assert.rejects(createUpdateChecker(api, async () => { calls++; return { ok: false, status: 500 }; })(), /500/);
+  assert.equal(calls, 1);
+});

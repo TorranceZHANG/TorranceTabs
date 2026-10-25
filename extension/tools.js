@@ -317,6 +317,13 @@ action($('#check-update'), async () => {
   if (!granted) throw Error('未获准访问 GitHub，尚未检查更新。');
   $('#update-result').textContent = '正在检查正式版本…';
   const result = await send('CHECK_UPDATE');
+  if (result.manual) {
+    $('#update-result').textContent = 'GitHub API 暂时受限，尚未自动比较版本。点击“查看最新发布页”检查；也可直接使用下方更新命令。';
+    $('#release-link').href = 'https://github.com/TorranceZHANG/TorranceTabs/releases/latest';
+    $('#release-link').textContent = '查看最新发布页';
+    return;
+  }
+  $('#release-link').textContent = '查看发布记录';
   $('#update-result').textContent = result.available ? `发现新版 ${result.latest}，当前 ${result.current}。可查看发布记录，或复制下方命令更新。` : `当前 ${result.current}；最新正式版 ${result.latest}。暂无更新。`;
   if (typeof result.url === 'string' && /^https:\/\/github\.com\/TorranceZHANG\/TorranceTabs\/releases\/tag\/v\d+\.\d+\.\d+$/.test(result.url)) $('#release-link').href = result.url;
 });

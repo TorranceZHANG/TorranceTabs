@@ -15,7 +15,7 @@ TorranceTabs 是本地运行的 Chrome 扩展，没有服务端或遥测。只�
 
 ## 手动检查更新
 
-用户主动检查时，可选请求 `https://api.github.com/*` 权限，仅访问 `https://api.github.com/repos/TorranceZHANG/TorranceTabs/releases/latest`。请求不带站点登录凭据、不上传链接或配置；返回数据只用于展示数字版本和固定仓库发布页，不作为可执行代码或安装命令。网络失败不影响本地标签管理。
+用户主动检查时，可选请求 `https://api.github.com/*` 权限，仅访问 `https://api.github.com/repos/TorranceZHANG/TorranceTabs/releases/latest`。请求不带站点登录凭据、不上传链接或配置；返回数据只用于展示数字版本和固定仓库发布页，不作为可执行代码或安装命令。API 返回 403/429 时先检查已有 GitHub 访问权；只有已授权时才对固定仓库 releases/latest 执行 HEAD 查询并严格校验最终版本地址，否则只提供手动查看发布页的链接。该回退不新增权限、不下载页面正文。网络失败不影响本地标签管理。
 
 ## 安装、更新和卸载
 
