@@ -366,3 +366,7 @@ kbd {
     transition-duration: 0.01ms !important;
   }
 }
+
+.favorite-strip{padding:0 0 12px}.favorite-strip>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.favorite-strip button{border:1px solid #dce4ef;background:#f2f6fc;color:#38547a;border-radius:8px;padding:9px 5px;font:inherit;font-size:12px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}.favorite-strip p{font-size:11px;color:#788598;margin:7px 0 0}.undo-row{display:flex;align-items:center;gap:10px;margin-top:10px}.undo-row .secondary-button{flex:1}.footer-actions{flex-wrap:wrap}
+
+.header-actions{display:flex;align-items:center;gap:7px}.tools-button{border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);padding:7px 9px;font:inherit;font-size:11px;font-weight:650;cursor:pointer}

@@ -231,7 +231,7 @@
     const heading = element('div', 'heading');
     heading.append(
       element('p', 'title', '链接已打开'),
-      element('p', 'subtitle', '这个完整网址已在其他标签页中打开。'),
+      element('p', 'subtitle', '按当前去重规则，这个网址已在其他标签页中打开。'),
     );
     const close = element('button', 'close', '×');
     close.type = 'button';

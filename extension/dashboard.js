@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS, validateSettings } from './rules.js';
+import { canonicalUrl, normalizeDedupRules } from './url-identity.js';
 
 const SETTINGS_KEY = 'settings';
 const READING_LIST_KEY = 'readingList';
@@ -25,6 +26,7 @@ const readingEmpty = document.querySelector('#reading-empty');
 const readingCount = document.querySelector('#reading-count');
 const statusBox = document.querySelector('#status');
 
+let dedupRules = [];
 let allTabs = [];
 let readingList = [];
 let settings = cloneDefaultSettings();
@@ -101,10 +103,11 @@ function groupVisibleTabs(query) {
   const urls = new Map();
 
   for (const tab of allTabs) {
-    let entry = urls.get(tab.url);
+    const key = canonicalUrl(tab.url, dedupRules);
+    let entry = urls.get(key);
     if (!entry) {
       entry = { url: tab.url, hostname: tab.hostname, tabs: [] };
-      urls.set(tab.url, entry);
+      urls.set(key, entry);
     }
     entry.tabs.push(tab);
   }
@@ -113,7 +116,7 @@ function groupVisibleTabs(query) {
   for (const entry of urls.values()) {
     const matches = !needle
       || entry.url.toLocaleLowerCase().includes(needle)
-      || entry.tabs.some((tab) => tab.title.toLocaleLowerCase().includes(needle));
+      || entry.tabs.some((tab) => tab.title.toLocaleLowerCase().includes(needle) || tab.url.toLocaleLowerCase().includes(needle));
     if (!matches) continue;
 
     let site = sites.get(entry.hostname);
@@ -202,7 +205,7 @@ function renderTabs() {
         const badge = document.createElement('span');
         badge.className = 'duplicate-badge';
         badge.textContent = `×${entry.tabs.length}`;
-        badge.setAttribute('aria-label', `${entry.tabs.length} 个完全相同的网址`);
+        badge.setAttribute('aria-label', `${entry.tabs.length} 个符合当前去重规则的网址`);
         actions.append(badge);
       }
 
@@ -258,7 +261,7 @@ function renderReadingList() {
 
 function countExtraDuplicates() {
   const urlCounts = new Map();
-  allTabs.forEach((tab) => urlCounts.set(tab.url, (urlCounts.get(tab.url) ?? 0) + 1));
+  allTabs.forEach((tab) => { const key = canonicalUrl(tab.url, dedupRules); if (key) urlCounts.set(key, (urlCounts.get(key) ?? 0) + 1); });
   return [...urlCounts.values()].reduce((sum, count) => sum + Math.max(0, count - 1), 0);
 }
 
@@ -269,8 +272,8 @@ function updateActionStates() {
   deduplicateButton.disabled = busy || !tabsLoaded || duplicates === 0;
   applyButton.disabled = busy || !tabsLoaded || !settings.enabled;
   deduplicateButton.title = duplicates === 0 && tabsLoaded
-    ? '当前没有完整网址相同的重复标签页'
-    : '跨普通窗口关闭完整网址相同的重复标签页';
+    ? '当前没有符合当前去重规则的重复标签页'
+    : '跨普通窗口关闭符合当前去重规则的重复标签页';
   applyButton.title = settings.enabled ? '' : '请先在分组设置中启用自动分组';
 }
 
@@ -458,14 +461,14 @@ function deduplicationResult(response, refreshed) {
 async function deduplicateTabs() {
   if (deduplicating || refreshing || organizing) return;
   if (!tabsLoaded || countExtraDuplicates() === 0) {
-    setStatus('当前没有完整网址相同的重复标签页。', 'success');
+    setStatus('当前没有符合已保存去重规则的重复标签页。', 'success');
     return;
   }
 
   deduplicating = true;
   updateActionStates();
   deduplicateButton.textContent = '去重中…';
-  setStatus('正在跨普通窗口清理完整网址相同的重复标签…', 'info');
+  setStatus('正在按已保存的规则跨普通窗口清理重复标签…', 'info');
   const waitingNotice = setTimeout(() => {
     setStatus('正在等待 Chrome 完成关闭；若有页面的“离开网站”提示，请先在 Chrome 中处理。不会重复发送关闭请求。', 'info');
   }, 5000);
@@ -490,13 +493,14 @@ async function deduplicateTabs() {
 
 async function initialize() {
   try {
-    const stored = await chrome.storage.local.get([SETTINGS_KEY, READING_LIST_KEY]);
+    const stored = await chrome.storage.local.get([SETTINGS_KEY, READING_LIST_KEY, 'library']);
     try {
       settings = validateSettings(stored[SETTINGS_KEY] ?? cloneDefaultSettings());
     } catch (error) {
       settings = cloneDefaultSettings();
       setStatus(`已保存的分组设置无效：${error.message}`, 'warning');
     }
+    dedupRules = normalizeDedupRules(stored.library?.dedupRules || []);
     readingList = sanitizeReadingList(stored[READING_LIST_KEY]);
     renderReadingList();
     updateStats();
@@ -514,6 +518,10 @@ searchInput.addEventListener('input', renderTabs);
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
+  if (changes.library) {
+    try { dedupRules = normalizeDedupRules(changes.library.newValue?.dedupRules || []); updateStats(); renderTabs(); }
+    catch (error) { setStatus(`去重规则无效：${error.message}`, 'error'); }
+  }
 
   if (changes[SETTINGS_KEY]) {
     try {

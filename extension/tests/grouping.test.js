@@ -245,3 +245,19 @@ test('稍后读并发保存不丢更新，同URL去重，删除按id，错误不
   assert.equal(state.data.readingList.length, 2);
   assert.equal(state.data.readingList.some(item => item.id === id), false);
 });
+
+test('稍后读新写入遵守标题与数量上限，旧超限数据仍可移除', async () => {
+  const { api, state } = fixture([]);
+  const update = createReadingList(api);
+  await assert.rejects(update({ type: 'SAVE_READING_ITEM', item: {
+    url: 'https://new.test/', title: 'x'.repeat(301),
+  } }), /300/);
+  state.data.readingList = Array.from({ length: 2001 }, (_, index) => ({
+    id: `legacy-${index}`, url: `https://legacy.test/${index}`, title: '旧条目', savedAt: index,
+  }));
+  await assert.rejects(update({ type: 'SAVE_READING_ITEM', item: {
+    url: 'https://new.test/', title: '新条目',
+  } }), /2000/);
+  await update({ type: 'REMOVE_READING_ITEM', id: 'legacy-0' });
+  assert.equal(state.data.readingList.length, 2000);
+});

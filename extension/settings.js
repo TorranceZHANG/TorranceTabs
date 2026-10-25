@@ -262,7 +262,8 @@ async function persistSettings() {
   pendingSaveSignature = signature(settings);
 
   try {
-    await chrome.storage.local.set({ [STORAGE_KEY]: settings });
+    const response = await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings });
+    if (!response?.ok) throw Error(response?.error || '后台未确认设置已保存，请重试。');
     dirty = false;
     externalSettings = null;
     externalNotice.hidden = true;

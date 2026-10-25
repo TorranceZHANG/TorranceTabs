@@ -21,7 +21,8 @@ async function fixture(t) {
   const api = {
     storage: { onChanged: event(),
       local: { async get(defaults) { return clone({ ...defaults, settings: { enabled: true, duplicatePromptEnabled: true,
-        rules: [{ prefix: 'https://example.com/', group: '工作', color: 'blue', enabled: true }] } }); }, async set() {} },
+        rules: [{ prefix: 'https://example.com/', group: '工作', color: 'blue', enabled: true }] } }); },
+        async set(values) { state.calls.push({ type: 'local-set', values: clone(values) }); } },
       session: { async get(defaults) { return clone({ ...defaults, ...state.session }); },
         async set(values) { Object.assign(state.session, clone(values)); } },
     },
@@ -187,4 +188,19 @@ test('快捷键与面板共享真实去重任务，GET状态不被原生关闭�
   assert.equal((await panel).closed, 1);
   assert.equal((await request('GET_CLEANUP_STATUS')).status.state, 'done');
   assert.equal(state.badge, '1');
+});
+
+test('新privileged消息只允许可信扩展页面，content script不能导出或写配置', async t => {
+  const { state, api } = await fixture(t);
+  const settings = { enabled: false, duplicatePromptEnabled: true, rules: [] };
+  const send = sender => new Promise(resolve => api.runtime.onMessage.emit({ type: 'SAVE_SETTINGS', settings }, sender, resolve));
+  const rejected = await send({ id: 'integration', url: 'https://example.com/page', tab: { id: 1 } });
+  assert.equal(rejected.ok, false);
+  assert.equal(state.calls.some(call => call.type === 'local-set'), false);
+  const accepted = await send({ id: 'integration', url: 'chrome-extension://integration/settings.html' });
+  assert.equal(accepted.ok, true);
+  assert.equal(state.calls.filter(call => call.type === 'local-set').length, 1);
+  const discard = sender => new Promise(resolve => api.runtime.onMessage.emit({ type: 'UNDO_DISCARD' }, sender, resolve));
+  assert.equal((await discard({ id: 'integration', url: 'https://example.com/page', tab: { id: 1 } })).ok, false);
+  assert.deepEqual(await discard({ id: 'integration', url: 'chrome-extension://integration/tools.html' }), { ok: true, discarded: 0 });
 });

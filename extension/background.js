@@ -2,12 +2,27 @@ import { createAutoGrouper, createReadingList } from './grouping.js';
 import { createDeduplicator } from './deduplication.js';
 import { createInlineDuplicateGuard } from './inline-duplicate-guard.js';
 import { createCleanupController } from './cleanup-controller.js';
+import { createLocalWriteQueue, createLibraryStore } from './library-store.js';
+import { createTabSuppression } from './tab-suppression.js';
+import { createOperationLock } from './operation-lock.js';
+import { createUndoJournal } from './undo-journal.js';
+import { createLibraryService } from './library-service.js';
+import { createUpdateChecker } from './update-checker.js';
 
-const grouper = createAutoGrouper(chrome, error => console.warn('自动分组暂未完成：', error));
-const updateReadingList = createReadingList(chrome);
-const deduplicateTabs = createDeduplicator(chrome);
-const cleanup = createCleanupController(chrome, deduplicateTabs);
-const duplicateGuard = createInlineDuplicateGuard(chrome, id => grouper.schedule(id));
+const localWrites = createLocalWriteQueue();
+const store = createLibraryStore(chrome, localWrites);
+const suppression = createTabSuppression(chrome);
+const operationLock = createOperationLock();
+const undoJournal = createUndoJournal(chrome, localWrites, suppression, operationLock);
+const grouper = createAutoGrouper(chrome, error => console.warn('自动分组暂未完成：', error), tab => suppression.contains(tab));
+const updateReadingList = createReadingList(chrome, localWrites);
+const deduplicateTabs = createDeduplicator(chrome, { journal: undoJournal,
+  getRules: async () => (await store.getLibrary()).dedupRules });
+const cleanup = createCleanupController(chrome, deduplicateTabs, { operationLock });
+const duplicateGuard = createInlineDuplicateGuard(chrome, id => grouper.schedule(id),
+  { shouldSuppress: tab => suppression.contains(tab) });
+const library = createLibraryService(chrome, store, undoJournal, suppression, operationLock);
+const checkUpdate = createUpdateChecker(chrome);
 const tabTasks = new Map();
 
 function routeTab(task, id, shouldGroup = true) {
@@ -39,6 +54,7 @@ chrome.tabs.onDetached.addListener(id => {
 });
 chrome.tabs.onAttached.addListener(id => { routeTab(duplicateGuard.updated(id), id); });
 chrome.tabs.onRemoved.addListener(id => {
+  void suppression.release(id);
   grouper.invalidate(id);
   tabTasks.delete(id);
   duplicateGuard.removed(id).then(released => {
@@ -64,8 +80,10 @@ chrome.permissions.onRemoved.addListener(() => {
   }).catch(error => console.warn('页内提醒权限状态更新失败：', error));
 });
 chrome.commands.onCommand.addListener(command => {
-  if (command !== 'deduplicate-tabs') return;
-  cleanup.run('shortcut').catch(error => console.warn('快捷键清理未完成：', error));
+  if (command === 'deduplicate-tabs') cleanup.run('shortcut').catch(error => console.warn('快捷键清理未完成：', error));
+  else if (/^favorite-[1-3]$/.test(command)) {
+    library.openFavorite(Number(command.slice(-1))).catch(error => console.warn('常用入口未打开：', error));
+  }
 });
 chrome.runtime.onInstalled.addListener(details => {
   if (details.reason === 'install') {
@@ -74,6 +92,15 @@ chrome.runtime.onInstalled.addListener(details => {
 });
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if (sender.id !== chrome.runtime.id || !message || typeof message !== 'object') return false;
+  const privileged = new Set(['LIBRARY_GET', 'LIBRARY_SAVE', 'CONFIG_EXPORT', 'CONFIG_PREVIEW', 'CONFIG_IMPORT',
+    'FAVORITE_OPEN', 'UNDO_RESTORE', 'UNDO_DISCARD', 'WORKSPACE_SAVE', 'WORKSPACE_RESTORE', 'WORKSPACE_DELETE', 'CHECK_UPDATE', 'SAVE_SETTINGS']);
+  if (privileged.has(message.type)) {
+    const base = chrome.runtime.getURL('');
+    if (typeof sender.url !== 'string' || !sender.url.startsWith(base)) {
+      reply({ ok: false, error: '此操作仅允许扩展页面发起。' });
+      return true;
+    }
+  }
   let task;
   if (message.type === 'APPLY_CURRENT_WINDOW') task = () => grouper.applyWindow(message.windowId);
   else if (message.type === 'DEDUPLICATE_TABS') task = () => cleanup.run('panel');
@@ -91,7 +118,20 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   };
   else if (['SAVE_READING_ITEM', 'REMOVE_READING_ITEM'].includes(message.type)) {
     task = async () => ({ readingList: await updateReadingList(message) });
-  } else return false;
+  } else if (message.type === 'SAVE_SETTINGS') task = async () => ({ settings: await store.saveSettings(message.settings) });
+  else if (message.type === 'LIBRARY_GET') task = () => library.get();
+  else if (message.type === 'LIBRARY_SAVE') task = async () => ({ library: await store.saveLibrary(message) });
+  else if (message.type === 'CONFIG_EXPORT') task = async () => ({ backup: await store.exportConfig() });
+  else if (message.type === 'CONFIG_PREVIEW') task = () => store.previewConfig(message.backup, message.mode);
+  else if (message.type === 'CONFIG_IMPORT') task = () => store.importConfig(message.token, message.backup);
+  else if (message.type === 'FAVORITE_OPEN') task = () => library.openFavorite(message.slot);
+  else if (message.type === 'UNDO_RESTORE') task = () => undoJournal.restore(message.ids);
+  else if (message.type === 'UNDO_DISCARD') task = () => undoJournal.discard(message.ids);
+  else if (message.type === 'WORKSPACE_SAVE') task = () => library.saveWorkspace(message);
+  else if (message.type === 'WORKSPACE_RESTORE') task = () => library.restoreWorkspace(message.id);
+  else if (message.type === 'WORKSPACE_DELETE') task = () => library.deleteWorkspace(message.id);
+  else if (message.type === 'CHECK_UPDATE') task = () => checkUpdate();
+  else return false;
   Promise.resolve().then(task)
     .then(value => reply({ ok: true, ...value }))
     .catch(error => reply({ ok: false, error: error.message || '操作未完成，请重试。' }));

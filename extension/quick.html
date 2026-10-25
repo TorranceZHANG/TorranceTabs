@@ -16,9 +16,11 @@
             <h1>快捷清理</h1>
           </div>
         </div>
-        <button id="refresh-data" class="icon-button" type="button" aria-label="刷新状态" title="刷新状态">↻</button>
+        <div class="header-actions"><button id="open-tools" class="tools-button" type="button">工具箱</button>
+        <button id="refresh-data" class="icon-button" type="button" aria-label="刷新状态" title="刷新状态">↻</button></div>
       </header>
 
+      <section class="favorite-strip" aria-label="常用站点"><div id="quick-favorites"></div><p id="favorite-hint">在工具箱配置三个常用入口</p></section>
       <section class="cleanup-card" aria-labelledby="cleanup-title">
         <div class="section-heading">
           <div>
@@ -44,7 +46,7 @@
           <span id="cleanup-button-label">一键清理重复页</span>
         </button>
 
-        <p class="scope-note">跨普通窗口按完整网址合并。共享、无痕、分屏和加载中的标签会跳过；优先保留正在使用、固定、播放或最近访问的一份。</p>
+        <p class="scope-note">跨普通窗口按已保存的去重规则合并（默认完整网址）。共享、无痕、分屏和加载中的标签会跳过；优先保留正在使用、固定、播放或最近访问的一份。</p>
 
         <div id="operation-status" class="operation-status" role="status" aria-live="polite" aria-atomic="true">
           <p id="operation-summary">正在读取上次清理状态…</p>
@@ -58,6 +60,7 @@
         </div>
       </section>
 
+      <div class="undo-row"><button id="quick-undo" class="secondary-button" type="button" disabled>恢复清理记录</button><button id="undo-details" class="text-button" type="button">选择恢复项</button></div><p id="quick-tools-status" class="scope-note" role="status" aria-live="polite" hidden></p>
       <section class="shortcut-row" aria-labelledby="shortcut-title">
         <div>
           <h2 id="shortcut-title">键盘快捷键</h2>

@@ -1,6 +1,6 @@
 import { DEFAULT_SETTINGS, validateSettings, findRule } from './rules.js';
 
-export function createAutoGrouper(api, onError = console.warn) {
+export function createAutoGrouper(api, onError = console.warn, shouldSuppress = () => false) {
   let tail = Promise.resolve();
   let settingsVersion = 0;
   const pending = new Map();
@@ -26,7 +26,7 @@ export function createAutoGrouper(api, onError = console.warn) {
     const settings = validateSettings(stored);
     if (!settings.enabled || pending.get(tabId) !== token) return 'skipped';
     const tab = await getTab(tabId);
-    if (!eligible(tab)) return 'skipped';
+    if (!eligible(tab) || await shouldSuppress(tab)) return 'skipped';
     const rule = findRule(tab.url, settings.rules);
     if (!rule) return 'skipped';
     const window = await api.windows.get(tab.windowId);
@@ -46,7 +46,7 @@ export function createAutoGrouper(api, onError = console.warn) {
 
     // Chrome can move a tab across windows when grouping: refresh both sides first.
     const current = await getTab(tabId);
-    if (!eligible(current) || pending.get(tabId) !== token || revision !== settingsVersion
+    if (!eligible(current) || await shouldSuppress(current) || pending.get(tabId) !== token || revision !== settingsVersion
       || current.windowId !== tab.windowId || current.url !== tab.url
       || current.groupId !== tab.groupId) return 'skipped';
     if (current.groupId >= 0) {
@@ -110,10 +110,15 @@ export function createAutoGrouper(api, onError = console.warn) {
   return { schedule, settingsChanged, applyWindow, invalidate: id => pending.delete(id) };
 }
 
-export function createReadingList(api) {
+export function createReadingList(api, externalEnqueue = null) {
   let tail = Promise.resolve();
+  const enqueue = externalEnqueue || (task => {
+    const result = tail.then(task);
+    tail = result.catch(() => {});
+    return result;
+  });
   return function update(message) {
-    const result = tail.then(async () => {
+    return enqueue(async () => {
       const { readingList = [] } = await api.storage.local.get({ readingList: [] });
       if (!Array.isArray(readingList)) throw new Error('稍后阅读清单格式无效。');
       let next;
@@ -125,8 +130,13 @@ export function createReadingList(api) {
           throw new Error('仅支持保存不包含账号密码的 HTTP/HTTPS 网页。');
         }
         if (readingList.some(item => item.url === url.href)) return readingList;
+        if (readingList.length >= 2000) {
+          throw new Error('稍后阅读已达到 2000 条上限，请先移除一些条目。');
+        }
+        const title = typeof input.title === 'string' ? input.title : url.hostname;
+        if (title.length > 300) throw new Error('稍后阅读标题超过 300 个字符。');
         next = [{ id: crypto.randomUUID(), url: url.href,
-          title: typeof input.title === 'string' ? input.title : url.hostname,
+          title,
           savedAt: Date.now() }, ...readingList];
       } else if (message.type === 'REMOVE_READING_ITEM' && typeof message.id === 'string') {
         next = readingList.filter(item => item.id !== message.id);
@@ -134,7 +144,5 @@ export function createReadingList(api) {
       await api.storage.local.set({ readingList: next });
       return next;
     });
-    tail = result.catch(() => {});
-    return result;
   };
 }

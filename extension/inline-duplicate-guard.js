@@ -1,5 +1,7 @@
 import { DEFAULT_SETTINGS, validateSettings } from './rules.js';
 import { createPopupDuplicateGuard } from './popup-duplicate-guard.js';
+import { DEFAULT_LIBRARY } from './library-schema.js';
+import { canonicalUrl } from './url-identity.js';
 
 const STATE_KEY = 'inlineDuplicateState';
 const TOKEN = /^inline-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
@@ -9,7 +11,8 @@ const http = value => {
 };
 const destination = tab => tab?.pendingUrl ? http(tab.pendingUrl) : http(tab?.url);
 
-export function createInlineDuplicateGuard(api, onReleased = () => {}) {
+export function createInlineDuplicateGuard(api, onReleased = () => {}, options = {}) {
+  const shouldSuppress = options.shouldSuppress || (() => false);
   const legacy = createPopupDuplicateGuard(api, { legacyOnly: true });
   const choices = new Map();
   const installations = new Map();
@@ -53,10 +56,16 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}) {
     return tab?.url === url && (!tab.pendingUrl || tab.pendingUrl === url) && await eligible(tab) ? tab : null;
   }
 
-  async function matches(url, sourceId, state) {
+  async function dedupRules() {
+    try { return (await api.storage.local.get({ library: DEFAULT_LIBRARY })).library?.dedupRules || []; }
+    catch { return []; }
+  }
+
+  async function matches(url, sourceId, state, rules = []) {
+    const key = canonicalUrl(url, rules);
     const result = [];
     for (const tab of await api.tabs.query({ windowType: 'normal' })) {
-      if (tab.id === sourceId || tab.url !== url || (tab.pendingUrl && tab.pendingUrl !== url)
+      if (tab.id === sourceId || canonicalUrl(tab.url, rules) !== key || (tab.pendingUrl && tab.pendingUrl !== tab.url)
         || state.watch[tab.id]?.stage === 'prompt') continue;
       if (await eligible(tab)) result.push(tab);
     }
@@ -146,11 +155,11 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}) {
       await save(state);
       const { settings = DEFAULT_SETTINGS } = await api.storage.local.get({ settings: DEFAULT_SETTINGS });
       if (!validateSettings(settings).duplicatePromptEnabled || !(await eligible(tab)) || !(await allowed(url))) return false;
-      const targets = await matches(url, id, state);
+      const targets = await matches(url, id, state, await dedupRules());
       if (!targets.length) return false;
       const token = `inline-${crypto.randomUUID()}`;
       state.prompts[token] = { source: { id, windowId: tab.windowId, groupId: tab.groupId ?? -1 },
-        url, title: targets[0].title || url, count: targets.length, targetId: targets[0].id,
+        url, title: targets[0].title || url, count: targets.length, targetId: targets[0].id, targetUrl: targets[0].url,
         documentId: null, phase: 'waiting', attempts: 0 };
       state.watch[id] = { stage: 'prompt', token };
       await save(state);
@@ -177,7 +186,7 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}) {
 
   const created = tab => enqueue(async () => {
     const current = await getTab(tab.id);
-    if (current?.url?.startsWith(api.runtime.getURL('duplicate.html')) || !(await eligible(current))) return false;
+    if (await shouldSuppress(current) || current?.url?.startsWith(api.runtime.getURL('duplicate.html')) || !(await eligible(current))) return false;
     const { settings = DEFAULT_SETTINGS } = await api.storage.local.get({ settings: DEFAULT_SETTINGS });
     if (!validateSettings(settings).duplicatePromptEnabled) return false;
     const state = await load();
@@ -186,6 +195,14 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}) {
     return check(tab.id, state);
   });
   const updated = id => enqueue(async () => {
+    const current = await getTab(id);
+    if (await shouldSuppress(current)) {
+      const state = await load();
+      const token = state.watch[id]?.token;
+      if (token) await dismiss(state, token);
+      else if (state.watch[id]) { delete state.watch[id]; await save(state); }
+      return false;
+    }
     const previous = await legacy.updated(id);
     const suppressed = await check(id, await load());
     if (typeof previous === 'object') return { ...previous, suppressed: previous.suppressed || suppressed };
@@ -215,22 +232,23 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}) {
     const { token } = message;
     const { state, record } = await context(message, sender);
     if (record.phase !== 'shown') throw Error('正在处理上一次选择，请处理 Chrome 的关闭提示。');
-    const candidates = await matches(record.url, record.source.id, state);
+    const candidates = await matches(record.url, record.source.id, state, await dedupRules());
     const target = candidates.find(tab => tab.id === record.targetId) || candidates[0];
-    const existing = target && await targetAvailable(target.id, record.url);
+    const expectedTargetUrl = target?.id === record.targetId ? (record.targetUrl || record.url) : target?.url;
+    const existing = target && await targetAvailable(target.id, expectedTargetUrl);
     if (!existing || !(await ping(record, token))) throw Error('已有标签或当前网页已变化，可以保留新标签。');
     record.phase = 'switching';
     await save(state);
     try {
-      if (!(await sourceAvailable(record)) || !(await targetAvailable(existing.id, record.url))
+      if (!(await sourceAvailable(record)) || !(await targetAvailable(existing.id, expectedTargetUrl))
         || !(await ping(record, token))) throw Error('网页已经变化，已保留新标签。');
       await api.tabs.update(existing.id, { active: true });
-      const focused = await targetAvailable(existing.id, record.url);
+      const focused = await targetAvailable(existing.id, expectedTargetUrl);
       if (!focused) throw Error('已有标签已变化，已保留新标签。');
       await api.windows.update(focused.windowId, { focused: true });
       record.phase = 'closing';
       await save(state);
-      if (!(await targetAvailable(existing.id, record.url)) || !(await sourceAvailable(record))
+      if (!(await targetAvailable(existing.id, expectedTargetUrl)) || !(await sourceAvailable(record))
         || !(await ping(record, token))) throw Error('网页已经变化，已保留新标签。');
       const removal = api.tabs.remove(record.source.id).then(() => null, error => error);
       return { removal, token, sourceId: record.source.id };

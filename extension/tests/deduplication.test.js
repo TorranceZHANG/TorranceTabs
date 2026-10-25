@@ -212,3 +212,44 @@ test('运行中新增的标签不纳入当前关闭计划', async () => {
   assert.deepEqual(await deduplicate(), { closed: 1, skipped: 0, failed: 0, remaining: 1 });
   assert.equal(state.tabs.has(3), true);
 });
+
+test('宽松URL分桶后journal持久化，再次严格复核raw URL才允许关闭', async () => {
+  const { state, api } = fixture([
+    { id: 1, url: 'https://example.com/?id=1&utm=a' },
+    { id: 2, url: 'https://example.com/?id=1&utm=b' },
+  ]);
+  const events = [];
+  const journal = { begin: () => 'batch', async prepare(_batch, tab) {
+    events.push(`prepare:${tab.id}`);
+    state.tabs.get(tab.id).url = 'https://example.com/?id=1&utm=changed';
+    return 'item';
+  }, async settle(_batch, outcomes) { events.push(outcomes.get('item')); } };
+  const deduplicate = createDeduplicator(api, { journal, getRules: async () => [
+    { origin: 'https://example.com', ignoreParams: ['utm'] },
+  ] });
+  assert.deepEqual(await deduplicate(), { closed: 0, skipped: 1, failed: 0, remaining: 1 });
+  assert.deepEqual(state.removed, []);
+  assert.deepEqual(events, ['prepare:2', '页面仍存在，未记录为可恢复。']);
+});
+
+test('journal写入失败或容量已满时绝不关闭页面', async () => {
+  const { state, api } = fixture([{ id: 1 }, { id: 2 }]);
+  const journal = { begin: () => 'batch', async prepare() { throw Error('Journal full'); }, async settle() {} };
+  const result = await createDeduplicator(api, { journal })();
+  assert.equal(result.closed, 0);
+  assert.equal(result.failed, 1);
+  assert.deepEqual(state.removed, []);
+});
+
+test('journal后等待keeper或焦点期间候选导航，最终candidate复核阻止remove', async () => {
+  const { state, api } = fixture([{ id: 1 }, { id: 2 }]);
+  let afterPrepare = false;
+  const journal = { begin: () => 'batch', async prepare() { afterPrepare = true; return 'item'; }, async settle() {} };
+  state.onGet = id => {
+    if (afterPrepare && id === 1) state.tabs.get(2).url = 'https://user.test/';
+  };
+  const result = await createDeduplicator(api, { journal })();
+  assert.equal(result.closed, 0);
+  assert.equal(state.removed.length, 0);
+  assert.equal(state.tabs.get(2).url, 'https://user.test/');
+});

@@ -188,6 +188,28 @@ test('只有显式switch会切到跨窗口目标，聚焦后仅关闭源重复�
   assert.ok(focus >= 0 && remove > focus);
 });
 
+test('忽略参数规则下切换使用目标原始URL，业务参数变化仍拒绝关闭源', async () => {
+  const target = 'https://example.com/page?utm=old&item=1';
+  const source = 'https://example.com/page?utm=new&item=1';
+  const allowed = fixture([{ id: 1, url: target, windowId: 2 }, { id: 2, url: source }]);
+  allowed.state.local.library = { schemaVersion: 1, revision: 0, favorites: [null, null, null], workspaces: [],
+    dedupRules: [{ origin: 'https://example.com', ignoreParams: ['utm'] }] };
+  await allowed.start();
+  assert.deepEqual(await allowed.guard.chooseInline(allowed.message(), allowed.sender()), { action: 'switched', closed: true });
+  assert.equal(allowed.state.tabs.has(1), true);
+  assert.equal(allowed.state.tabs.has(2), false);
+  assert.ok(allowed.state.calls.some(call => call.type === 'focus' && call.id === 2));
+
+  const changed = fixture([{ id: 1, url: target }, { id: 2, url: source }]);
+  changed.state.local.library = { schemaVersion: 1, revision: 0, favorites: [null, null, null], workspaces: [],
+    dedupRules: [{ origin: 'https://example.com', ignoreParams: ['utm'] }] };
+  await changed.start();
+  changed.state.tabs.get(1).url = 'https://example.com/page?utm=old&item=2';
+  await assert.rejects(changed.guard.chooseInline(changed.message(), changed.sender()));
+  assert.equal(changed.state.tabs.has(2), true);
+  assert.equal(changed.state.calls.some(call => call.type === 'remove'), false);
+});
+
 test('目标消失、源移动/改组/变保护或浮层已关闭时均不删除源', async () => {
   for (const change of ['target', 'window', 'group', 'pinned', 'shared', 'split', 'overlay']) {
     const { state, guard, start, message, sender } = fixture();

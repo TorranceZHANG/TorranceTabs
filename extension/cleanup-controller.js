@@ -3,7 +3,8 @@ const TITLE = '一键清理重复页 · 标签工具';
 const STATES = new Set(['idle', 'running', 'done', 'error', 'interrupted']);
 const count = value => Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 
-export function createCleanupController(api, deduplicate) {
+export function createCleanupController(api, deduplicate, options = {}) {
+  const operationLock = options.operationLock || null;
   let status = { state: 'idle' };
   let inFlight = null;
 
@@ -54,7 +55,7 @@ export function createCleanupController(api, deduplicate) {
   const getStatus = async () => { await ready; return structuredClone(status); };
   const run = (origin = 'panel') => {
     if (inFlight) return inFlight;
-    const task = (async () => {
+    const execute = async () => {
       await ready;
       const operation = { operationId: crypto.randomUUID(), startedAt: Date.now(), origin };
       const saved = await store({ ...operation, state: 'running' });
@@ -78,7 +79,8 @@ export function createCleanupController(api, deduplicate) {
         await badge(status);
         throw error;
       }
-    })();
+    };
+    const task = operationLock ? operationLock.run('cleanup', execute) : execute();
     inFlight = task;
     const clear = () => { if (inFlight === task) inFlight = null; };
     task.then(clear, clear);

@@ -21,6 +21,7 @@ const editShortcutButton = document.querySelector('#edit-shortcut');
 const dashboardButton = document.querySelector('#open-dashboard');
 const settingsButton = document.querySelector('#open-settings');
 
+let duplicateKey = value => value;
 let currentStatus = null;
 let statusKnown = false;
 let actionPending = false;
@@ -244,13 +245,13 @@ async function loadTabSnapshot() {
     if (request !== snapshotRequest) return;
     const webTabs = tabs.filter(tab => !tab.incognito && isHttpUrl(tab.url));
     const counts = new Map();
-    webTabs.forEach(tab => counts.set(tab.url, (counts.get(tab.url) || 0) + 1));
+    webTabs.forEach(tab => { const key = duplicateKey(tab.url); if (key) counts.set(key, (counts.get(key) || 0) + 1); });
     const extraDuplicates = [...counts.values()].reduce((total, count) => total + Math.max(0, count - 1), 0);
     tabCount.textContent = String(webTabs.length);
     duplicateCount.textContent = String(extraDuplicates);
     snapshotTime.textContent = extraDuplicates
       ? '快照中的重复页不一定都能关闭。'
-      : '当前快照没有发现完整网址相同的标签。';
+      : '当前快照没有发现符合当前规则的重复标签。';
     setLoadError('tabs', '');
   } catch {
     if (request !== snapshotRequest) return;
@@ -397,3 +398,9 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 });
 
 refreshAll();
+
+// Keep the core cleanup panel available even if an optional tools UI fails.
+if (document.querySelector('#open-tools')) {
+  import('./quick-tools.js').then(module => module.initializeQuickTools(key => { duplicateKey = key; void loadTabSnapshot(); }))
+    .catch(error => { const note = document.querySelector('#quick-tools-status'); note.textContent = `工具箱读取失败：${error.message}`; note.hidden = false; });
+}
