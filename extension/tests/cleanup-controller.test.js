@@ -96,3 +96,19 @@ test('读取历史状态失败仍允许用户显式清理，不误报上次已�
   await controller.run();
   assert.equal(runs, 1);
 });
+
+test('确认请求原样透传给deduplicator且仍受共享operationLock保护', async () => {
+  const requests = [];
+  const lockCalls = [];
+  const api = { storage: { session: { async get(defaults) { return defaults; }, async set() {} } },
+    action: { async setBadgeText() {}, async setBadgeBackgroundColor() {}, async setTitle() {} } };
+  const operationLock = { async run(kind, task) { lockCalls.push(kind); return task(); } };
+  const controller = createCleanupController(api, async request => {
+    requests.push(request);
+    return { closed: 0, skipped: 0, failed: 0, remaining: 0 };
+  }, { operationLock });
+  const request = { token: 'dedup-token', selections: [{ bucketId: 'bucket', keeperId: 7 }] };
+  await controller.run('review', request);
+  assert.deepEqual(requests, [request]);
+  assert.deepEqual(lockCalls, ['cleanup']);
+});

@@ -1,16 +1,18 @@
 {
   "manifest_version": 3,
   "name": "TorranceTabs · 标签管理",
-  "version": "1.7.2",
+  "version": "1.8.0",
   "minimum_chrome_version": "110",
-  "description": "网址前缀分组、可撤销去重、常用站点快捷入口、项目工作区与配置迁移。",
+  "description": "自动分组、实时标签搜索、可选侧栏、可预览去重、工作区历史与按需配置同步。",
   "permissions": [
     "tabs",
     "tabGroups",
-    "storage"
+    "storage",
+    "alarms"
   ],
   "optional_permissions": [
-    "scripting"
+    "scripting",
+    "sidePanel"
   ],
   "optional_host_permissions": [
     "http://*/*",
@@ -22,7 +24,11 @@
   },
   "action": {
     "default_title": "一键清理重复页 · 标签工具",
-    "default_popup": "quick.html"
+    "default_popup": "quick.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
   },
   "commands": {
     "deduplicate-tabs": {
@@ -52,10 +58,28 @@
         "mac": "MacCtrl+Shift+3"
       },
       "description": "定位或打开常用入口 3"
+    },
+    "open-search": {
+      "description": "打开统一搜索"
+    },
+    "open-side-panel": {
+      "description": "打开可选侧栏或标签看板"
     }
   },
   "options_ui": {
     "page": "settings.html",
     "open_in_tab": true
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "omnibox": {
+    "keyword": "tt"
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
   }
 }

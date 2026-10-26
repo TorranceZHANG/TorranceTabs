@@ -1,5 +1,6 @@
 import { DEFAULT_SETTINGS, validateSettings } from './rules.js';
 import { canonicalUrl, normalizeDedupRules } from './url-identity.js';
+import { buildSearchEntries, searchEntries } from './search.js';
 
 const SETTINGS_KEY = 'settings';
 const READING_LIST_KEY = 'readingList';
@@ -28,6 +29,10 @@ const statusBox = document.querySelector('#status');
 
 let dedupRules = [];
 let allTabs = [];
+let allGroups = [];
+let workspaces = [];
+let recentTabs = {};
+let allowlist = [];
 let readingList = [];
 let settings = cloneDefaultSettings();
 let refreshing = false;
@@ -90,6 +95,7 @@ function normalizeTab(tab) {
   const url = parseHttpUrl(tab.url);
   if (!url || tab.incognito || typeof tab.id !== 'number' || typeof tab.windowId !== 'number') return null;
   return {
+    ...tab,
     id: tab.id,
     windowId: tab.windowId,
     url: url.href,
@@ -103,10 +109,14 @@ function groupVisibleTabs(query) {
   const urls = new Map();
 
   for (const tab of allTabs) {
-    const key = canonicalUrl(tab.url, dedupRules);
+    const mode = document.querySelector('#view-mode').value;
+    const group = allGroups.find(group => group.id === tab.groupId);
+    const bucket = mode === 'window' ? `窗口 ${tab.windowId}` : mode === 'group'
+      ? `窗口 ${tab.windowId} / ${group?.title || '未分组'}` : tab.hostname;
+    const key = `${bucket}\n${canonicalUrl(tab.url, dedupRules)}`;
     let entry = urls.get(key);
     if (!entry) {
-      entry = { url: tab.url, hostname: tab.hostname, tabs: [] };
+      entry = { url: tab.url, hostname: bucket, tabs: [] };
       urls.set(key, entry);
     }
     entry.tabs.push(tab);
@@ -151,6 +161,7 @@ function createButton(label, className, onClick) {
 
 function renderTabs() {
   const query = searchInput.value;
+  if (query.trim() || document.querySelector('#search-source').value !== 'all') return renderUnifiedSearch();
   const sites = groupVisibleTabs(query);
   siteGrid.replaceChildren();
   loadingState.hidden = true;
@@ -194,9 +205,13 @@ function renderTabs() {
         () => focusTab(representative),
       );
       titleButton.setAttribute('aria-label', `切换到标签页：${representative.title}`);
+      titleButton.dataset.searchKey = `tab:${representative.id}`;
       const urlLine = document.createElement('p');
       urlLine.className = 'tab-url';
       urlLine.textContent = displayUrl(entry.url);
+      const flags = [representative.pinned ? '固定' : '', representative.audible ? '发声' : '', representative.discarded ? '休眠' : ''].filter(Boolean);
+      const group = allGroups.find(group => group.id === representative.groupId);
+      urlLine.textContent += ` · 窗口 ${representative.windowId}${group?.title ? ` / ${group.title}` : ''}${flags.length ? ` · ${flags.join('、')}` : ''}`;
       copy.append(titleButton, urlLine);
 
       const actions = document.createElement('div');
@@ -204,7 +219,7 @@ function renderTabs() {
       if (entry.tabs.length > 1) {
         const badge = document.createElement('span');
         badge.className = 'duplicate-badge';
-        badge.textContent = `×${entry.tabs.length}`;
+        badge.textContent = `${allowlist.includes(new URL(entry.url).origin) ? '允许重复 ' : ''}×${entry.tabs.length}`;
         badge.setAttribute('aria-label', `${entry.tabs.length} 个符合当前去重规则的网址`);
         actions.append(badge);
       }
@@ -261,7 +276,7 @@ function renderReadingList() {
 
 function countExtraDuplicates() {
   const urlCounts = new Map();
-  allTabs.forEach((tab) => { const key = canonicalUrl(tab.url, dedupRules); if (key) urlCounts.set(key, (urlCounts.get(key) ?? 0) + 1); });
+  allTabs.forEach((tab) => { const key = allowlist.includes(new URL(tab.url).origin) ? null : canonicalUrl(tab.url, dedupRules); if (key) urlCounts.set(key, (urlCounts.get(key) ?? 0) + 1); });
   return [...urlCounts.values()].reduce((sum, count) => sum + Math.max(0, count - 1), 0);
 }
 
@@ -295,18 +310,26 @@ function updateStats() {
 async function refreshTabs({ announce = true, internal = false } = {}) {
   if (refreshing || (!internal && (organizing || deduplicating))) return false;
   refreshing = true;
+  const focusedKey = siteGrid.contains(document.activeElement) ? document.activeElement.dataset.searchKey : null;
   updateActionStates();
   refreshButton.textContent = '刷新中…';
-  loadingState.hidden = false;
-  emptyState.hidden = true;
-  siteGrid.replaceChildren();
+  if (!tabsLoaded) { loadingState.hidden = false; emptyState.hidden = true; siteGrid.replaceChildren(); }
 
   try {
-    const tabs = await chrome.tabs.query({});
+    const [tabs, groups, stored, session] = await Promise.all([
+      chrome.tabs.query({ windowType: 'normal' }), chrome.tabGroups.query({}),
+      chrome.storage.local.get({ library: { workspaces: [] }, duplicateAllowlist: [] }),
+      chrome.storage.session.get({ recentTabs: {} }),
+    ]);
+    allGroups = groups;
+    workspaces = stored.library?.workspaces || [];
+    allowlist = stored.duplicateAllowlist || [];
+    recentTabs = session.recentTabs || {};
     allTabs = tabs.map(normalizeTab).filter(Boolean);
     tabsLoaded = true;
     updateStats();
     renderTabs();
+    if (focusedKey && document.activeElement === document.body) [...siteGrid.querySelectorAll('[data-search-key]')].find(button => button.dataset.searchKey === focusedKey)?.focus();
     lastUpdated.textContent = `最近刷新：${new Intl.DateTimeFormat('zh-CN', {
       hour: '2-digit',
       minute: '2-digit',
@@ -327,6 +350,34 @@ async function refreshTabs({ announce = true, internal = false } = {}) {
     refreshButton.textContent = '刷新列表';
     updateActionStates();
   }
+}
+
+function renderUnifiedSearch() {
+  loadingState.hidden = true;
+  const results = searchEntries(buildSearchEntries(allTabs, allGroups, { readingList, library: { workspaces } }, recentTabs),
+    searchInput.value, document.querySelector('#search-source').value, 200);
+  siteGrid.replaceChildren(); emptyState.hidden = Boolean(results.length);
+  emptyTitle.textContent = '没有匹配结果'; emptyCopy.textContent = '试试页面标题、网址或工作区名称。';
+  const list = document.createElement('ul'); list.className = 'unified-results';
+  for (const entry of results) {
+    const row = document.createElement('li');
+    const button = createButton('', 'search-result', async () => {
+      if (button.disabled) return;
+      button.disabled = true;
+      try {
+        const result = await chrome.runtime.sendMessage({ type: 'SEARCH_ACTIVATE', key: entry.key, url: entry.url });
+        if (!result?.ok) throw Error(result?.error || '页面未打开');
+      } catch (error) { setStatus(error.message, 'error'); }
+      finally { button.disabled = false; }
+    });
+    button.dataset.searchKey = entry.key;
+    const title = document.createElement('strong'); title.textContent = entry.title;
+    const context = document.createElement('span'); context.textContent = `${entry.type === 'tab' ? '已打开' : '已保存'} · ${entry.context}`;
+    const url = document.createElement('span'); url.textContent = displayUrl(entry.url);
+    button.append(title, context, url); row.append(button); list.append(row);
+  }
+  siteGrid.append(list);
+  if (results.length === 200) { const hint = document.createElement('p'); hint.className = 'small muted'; hint.textContent = '显示前 200 项，请继续输入以缩小范围。'; siteGrid.append(hint); }
 }
 
 async function focusTab(tab) {
@@ -518,8 +569,9 @@ searchInput.addEventListener('input', renderTabs);
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
+  if (changes.duplicateAllowlist) { allowlist = changes.duplicateAllowlist.newValue || []; updateStats(); renderTabs(); }
   if (changes.library) {
-    try { dedupRules = normalizeDedupRules(changes.library.newValue?.dedupRules || []); updateStats(); renderTabs(); }
+    try { workspaces = changes.library.newValue?.workspaces || []; dedupRules = normalizeDedupRules(changes.library.newValue?.dedupRules || []); updateStats(); renderTabs(); }
     catch (error) { setStatus(`去重规则无效：${error.message}`, 'error'); }
   }
 
@@ -539,3 +591,35 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 });
 
 initialize();
+const initialQuery = new URL(location.href).searchParams;
+if (initialQuery.has('q')) searchInput.value = initialQuery.get('q').slice(0, 300);
+if (initialQuery.has('q') || initialQuery.has('search')) searchInput.focus();
+
+document.querySelector('#view-mode').addEventListener('change', renderTabs);
+document.querySelector('#search-source').addEventListener('change', renderTabs);
+searchInput.addEventListener('keydown', event => {
+  if (!['ArrowDown', 'Enter'].includes(event.key)) return;
+  const first = siteGrid.querySelector('.search-result, .tab-title');
+  if (first) { event.preventDefault(); if (event.key === 'Enter') first.click(); else first.focus(); }
+});
+siteGrid.addEventListener('keydown', event => {
+  const items = [...siteGrid.querySelectorAll('.search-result, .tab-title')];
+  const index = items.indexOf(document.activeElement);
+  if (event.key === 'Escape') { event.preventDefault(); searchInput.focus(); }
+  else if (index >= 0 && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
+    event.preventDefault(); items[(index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
+  }
+});
+let refreshTimer;
+let refreshQueued = false;
+function scheduleRefresh() {
+  refreshQueued = true; clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(async () => {
+    if (refreshing || organizing || deduplicating) { scheduleRefresh(); return; }
+    refreshQueued = false; await refreshTabs({ announce: false });
+    if (refreshQueued) scheduleRefresh();
+  }, 180);
+}
+for (const event of ['onCreated', 'onRemoved', 'onUpdated', 'onMoved', 'onAttached', 'onDetached', 'onReplaced', 'onActivated']) chrome.tabs[event]?.addListener(scheduleRefresh);
+for (const event of ['onCreated', 'onRemoved', 'onUpdated', 'onMoved']) chrome.tabGroups[event]?.addListener(scheduleRefresh);
+chrome.windows.onFocusChanged?.addListener(scheduleRefresh);

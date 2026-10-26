@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateSettings, findRule } from '../rules.js';
+import { validateSettings, findRule, explainRule } from '../rules.js';
 
 const rule = (prefix, group = '开发', color = 'blue') => ({ prefix, group, color, enabled: true });
 const settings = rules => validateSettings({ enabled: true, rules });
@@ -56,4 +56,25 @@ test('旧规则兼容默认开启重复提醒，开关独立于自动分组', ()
   assert.equal(old.enabled, false);
   assert.equal(validateSettings({ enabled: true, rules: [], duplicatePromptEnabled: false }).duplicatePromptEnabled, false);
   assert.throws(() => validateSettings({ enabled: true, rules: [], duplicatePromptEnabled: 'yes' }));
+});
+
+test('排除 pathname 前缀后回退到最长未排除规则，并解释排除原因', () => {
+  const { rules } = settings([
+    { ...rule('https://example.com/'), excludePaths: ['/private'] },
+    { ...rule('https://example.com/private/', '私有'), excludePaths: ['/private/admin'] },
+  ]);
+  assert.equal(findRule('https://example.com/private/doc', rules).group, '私有');
+  const fallback = explainRule('https://example.com/private/admin/users', rules);
+  assert.equal(fallback.rule, null);
+  assert.equal(fallback.reason, 'excluded');
+  assert.equal(fallback.matchedPrefix, 'https://example.com/private/');
+  assert.deepEqual(fallback.excludedPaths, ['/private/admin', '/private']);
+  assert.deepEqual(validateSettings({ enabled: true, rules: [rule('https://old.test')] }).rules[0].excludePaths, []);
+});
+
+test('排除路径拒绝跨站、query/hash、重复和超过20项', () => {
+  for (const excludePaths of [['//evil.test/x'], ['/x?q=1'], ['/x#part'], ['/x', '/x'],
+    Array.from({ length: 21 }, (_, index) => `/x${index}`)]) {
+    assert.throws(() => settings([{ ...rule('https://example.com/'), excludePaths }]));
+  }
 });

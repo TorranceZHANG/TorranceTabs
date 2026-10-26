@@ -299,3 +299,19 @@ test('无DOM安全返回；重复注入与SHOW幂等，PING/HIDE只反映当前t
   assert.equal(firstHost.isConnected, false);
   assert.deepEqual({ ...page.ping() }, { token: null, url: PAGE_URL });
 });
+
+test('暂停本站按钮可信点击后立即撤下并沿用INLINE_DUPLICATE_CHOOSE协议，主题密度来自消息', () => {
+  const page = fixture();
+  page.run();
+  page.show('token-pause', { preferences: { theme: 'dark', density: 'compact' } });
+  assert.match(page.control('card').className, /dark/);
+  assert.match(page.control('card').className, /compact/);
+  const host = page.host();
+  page.control('pause').emit('click', { isTrusted: false });
+  assert.equal(host.isConnected, true);
+  page.control('pause').emit('click', { isTrusted: true });
+  assert.equal(host.isConnected, false);
+  assert.deepEqual(page.state.sent.map(message => ({ ...message })), [{
+    type: 'INLINE_DUPLICATE_CHOOSE', token: 'token-pause', choice: 'pause-site',
+  }]);
+});

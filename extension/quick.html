@@ -1,5 +1,7 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff"><title>TorranceTabs · 快捷面板</title><link rel="stylesheet" href="ui.css"><link rel="stylesheet" href="quick.css"></head>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff"><title>TorranceTabs · 快捷面板</title><link rel="stylesheet" href="ui.css"><link rel="stylesheet" href="quick.css">  <link rel="stylesheet" href="appearance.css">
+    <script type="module" src="appearance.js"></script>
+  </head>
 <body><main class="popup-shell">
 <header class="topbar"><div class="brand"><span class="app-brand-mark" aria-hidden="true"></span><div><h1 translate="no">TorranceTabs</h1><p>让标签各归其位</p></div></div><div class="header-actions"><button id="open-tools" class="text-button" type="button">工具箱</button><button id="refresh-data" class="icon-button" type="button" aria-label="刷新状态" title="刷新状态"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1"/></svg></button></div></header>
 <section class="favorite-strip" aria-label="常用站点"><h2>常用入口</h2><div id="quick-favorites"></div><p id="favorite-hint">在工具箱配置常用入口</p></section>
@@ -10,4 +12,5 @@
 <div class="undo-row"><button id="quick-undo" class="text-button" type="button" disabled>恢复清理记录</button><button id="undo-details" class="text-button" type="button">查看恢复记录</button></div><p id="quick-tools-status" class="tools-status" role="status" aria-live="polite" hidden></p>
 <section class="shortcut-row" aria-labelledby="shortcut-title"><h2 id="shortcut-title">快捷清理</h2><div class="shortcut-action"><kbd id="shortcut-value">读取中</kbd><button id="edit-shortcut" class="text-button" type="button">修改</button></div></section>
 <nav class="footer-actions" aria-label="扩展页面"><button id="open-dashboard" class="secondary-button" type="button">标签看板 <span aria-hidden="true">↗</span></button><button id="open-settings" class="secondary-button" type="button">分组设置 <span aria-hidden="true">↗</span></button></nav><p class="popup-footnote">本机存储 · 新标签页保持原样</p>
-</main><script type="module" src="quick.js"></script></body></html>
+<div class="quick-more"><a class="button" href="dashboard.html" target="_blank">搜索全部页面</a><a class="button" href="cleanup.html" target="_blank">查看重复项</a><button id="open-side-panel" type="button">打开侧栏</button><button id="rule-current-page" type="button">为当前网页分组</button></div></main><script type="module" src="quick.js"></script><script type="module" src="panel-launcher.js"></script>
+  </body></html>

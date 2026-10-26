@@ -5,7 +5,7 @@ import { createInlineDuplicateGuard } from '../inline-duplicate-guard.js';
 const URL = 'https://example.com/page?q=1#part';
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)); };
 const gate = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
-function fixture(tabs = [{ id: 1, url: URL }, { id: 2, url: URL }]) {
+function fixture(tabs = [{ id: 1, url: URL }, { id: 2, url: URL }], options = {}) {
   const state = { tabs: new Map(tabs.map(tab => [tab.id, { windowId: 1, groupId: -1, pinned: false, title: `页面 ${tab.id}`, ...tab }])),
     windows: new Map([[1, { id: 1, type: 'normal' }], [2, { id: 2, type: 'normal' }], [3, { id: 3, type: 'popup' }]]),
     docs: new Map(tabs.map(tab => [tab.id, `doc-${tab.id}`])), groups: new Map(), overlays: new Map(), calls: [], released: [], granted: true,
@@ -51,7 +51,7 @@ function fixture(tabs = [{ id: 1, url: URL }, { id: 2, url: URL }]) {
     tabGroups: { async get(id) { if (!state.groups.has(id)) throw Error('No group'); return clone(state.groups.get(id)); } },
   };
   const release = id => { state.released.push(id); };
-  const guard = createInlineDuplicateGuard(api, release);
+  const guard = createInlineDuplicateGuard(api, release, options);
   const record = () => Object.entries(state.session.inlineDuplicateState?.prompts || {})[0];
   const message = (choice = 'switch') => ({ token: record()[0], choice });
   const sender = (id = 2) => ({ id: 'unit', tab: { id }, frameId: 0, documentId: state.docs.get(id), url: state.tabs.get(id).url, documentLifecycle: 'active' });
@@ -349,4 +349,88 @@ test('Worker重建自动恢复丢失的注入，旧注入迟到不能覆盖新�
   await settle();
   assert.equal(record()[1].phase, 'shown');
   assert.equal(state.calls.filter(call => call.message?.type === 'INLINE_DUPLICATE_SHOW').length, 1);
+});
+
+test('allowlist和站点暂停阻止提示，暂停动作只信任绑定记录中的origin并立即dismiss', async () => {
+  for (const mode of ['allowlist', 'paused']) {
+    const policy = {
+      async isDuplicateAllowed() { return mode === 'allowlist'; },
+      async isPromptPaused() { return true; },
+    };
+    const { state, guard } = fixture(undefined, { policy });
+    assert.equal(await guard.created({ id: 2 }), false);
+    assert.equal(state.calls.some(call => call.type === 'inject'), false);
+  }
+
+  const paused = [];
+  const policy = {
+    async isDuplicateAllowed() { return false; },
+    async isPromptPaused() { return false; },
+    async pauseSite(origin) { paused.push(origin); },
+  };
+  const { state, guard, start, message, sender } = fixture(undefined, { policy });
+  state.local.preferences = { theme: 'dark', density: 'compact' };
+  await start();
+  const show = state.calls.find(call => call.message?.type === 'INLINE_DUPLICATE_SHOW');
+  assert.deepEqual(show.message.preferences, { theme: 'dark', density: 'compact' });
+  const forged = { ...message('pause-site'), origin: 'https://evil.test' };
+  assert.deepEqual(await guard.chooseInline(forged, sender()), {
+    action: 'paused', origin: 'https://example.com', releasedId: 2,
+  });
+  assert.deepEqual(paused, ['https://example.com']);
+  assert.equal(state.overlays.size, 0);
+  assert.equal(state.tabs.has(2), true);
+});
+
+test('仅切换并关闭路径持有共享operationLock，保留和暂停不持锁', async () => {
+  const kinds = [];
+  const operationLock = { async run(kind, task) { kinds.push(kind); return task(); } };
+  const policy = { async isDuplicateAllowed() { return false; }, async isPromptPaused() { return false; }, async pauseSite() {} };
+  const switched = fixture(undefined, { operationLock, policy });
+  await switched.start();
+  await switched.guard.chooseInline(switched.message('switch'), switched.sender());
+  assert.deepEqual(kinds, ['inline-duplicate']);
+
+  const kept = fixture(undefined, { operationLock, policy });
+  await kept.start();
+  await kept.guard.chooseInline(kept.message('keep'), kept.sender());
+  const paused = fixture(undefined, { operationLock, policy });
+  await paused.start();
+  await paused.guard.chooseInline(paused.message('pause-site'), paused.sender());
+  assert.deepEqual(kinds, ['inline-duplicate']);
+});
+
+test('聚焦后权限、开关、policy或源目标稳定性变化时终检保留源', async () => {
+  for (const change of ['permission', 'setting', 'policy', 'source-reload', 'target-loading',
+    'source-shared', 'target-shared', 'source-split']) {
+    let paused = false;
+    const policy = {
+      async isDuplicateAllowed() { return false; },
+      async isPromptPaused() { return paused; },
+    };
+    const current = fixture(undefined, { policy });
+    await current.start();
+    current.state.onFocus = () => {
+      if (change === 'permission') {
+        current.state.granted = false;
+        void current.guard.permissionsChanged(); // queued cleanup must not be the safety barrier.
+      }
+      if (change === 'setting') current.state.local.settings.duplicatePromptEnabled = false;
+      if (change === 'policy') paused = true;
+      if (change === 'source-reload') Object.assign(current.state.tabs.get(2), { pendingUrl: URL, status: 'loading' });
+      if (change === 'target-loading') Object.assign(current.state.tabs.get(1), { pendingUrl: URL, status: 'loading' });
+      if (change === 'source-shared') {
+        current.state.groups.set(7, { id: 7, windowId: 1, shared: true });
+        current.state.tabs.get(2).groupId = 7;
+      }
+      if (change === 'target-shared') {
+        current.state.groups.set(7, { id: 7, windowId: 1, shared: true });
+        current.state.tabs.get(1).groupId = 7;
+      }
+      if (change === 'source-split') current.state.tabs.get(2).splitViewId = 4;
+    };
+    await assert.rejects(current.guard.chooseInline(current.message(), current.sender()));
+    assert.equal(current.state.tabs.has(2), true, change);
+    assert.equal(current.state.calls.some(call => call.type === 'remove'), false, change);
+  }
 });

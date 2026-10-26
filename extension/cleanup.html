@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f5f7f8">
+    <title>重复页清理 · TorranceTabs</title>
+    <link rel="stylesheet" href="ui.css">
+    <link rel="stylesheet" href="tools.css">
+<link rel="stylesheet" href="dashboard.css">
+<link rel="stylesheet" href="cleanup.css">
+    <link rel="stylesheet" href="appearance.css">
+    <script type="module" src="appearance.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
+    <div class="app-layout">
+      <aside class="app-sidebar">
+        <a class="app-brand" href="dashboard.html" aria-label="TorranceTabs 标签看板">
+          <span class="app-brand-mark" aria-hidden="true">T</span>
+          <span translate="no">TorranceTabs</span>
+        </a>
+        <nav class="app-nav" aria-label="主要导航">
+          <a href="dashboard.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>标签看板</a>
+          <a href="tools.html" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M8 7V4h8v3M3 12h18m-9-2v4"/></svg>工具箱</a>
+          <a href="settings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2" fill="currentColor"/><circle cx="16" cy="12" r="2" fill="currentColor"/><circle cx="10" cy="18" r="2" fill="currentColor"/></svg>分组设置</a>
+        </nav>
+        
+        <div class="app-sidebar-foot">
+          <span>数据默认保存在本机</span>
+          <span id="version">1.8.0</span>
+        </div>
+      </aside>
+
+      <main class="app-main" id="main-content" tabindex="-1">
+<header class="page-heading"><div><h1>重复页清理</h1><p class="page-description">先看清每一份页面，再决定保留哪一个。</p></div><a class="button" href="dashboard.html">返回看板</a></header>
+<section class="tool-section"><div class="view-controls">
+<label>清理范围<select id="cleanup-scope"><option value="all">全部普通窗口</option><option value="window">指定窗口</option><option value="group">指定标签组</option></select></label>
+<label id="window-field" hidden>窗口<select id="cleanup-window"></select></label>
+<label id="group-field" hidden>标签组<select id="cleanup-group"></select></label>
+<button id="preview-cleanup" class="primary" type="button">预览重复项</button></div>
+<p class="small muted">允许重复的站点、共享组、无痕、分屏及正在导航的页面会跳过。预览 5 分钟有效；页面变化时会再次复核。</p>
+<div id="cleanup-preview" class="cleanup-preview"><p class="empty">选择范围后点击预览。</p></div>
+<div class="actions"><button id="execute-cleanup" class="primary" type="button" disabled>清理选中的重复组</button></div><p id="cleanup-status" role="status" aria-live="polite"></p>
+</section>
+<section class="tool-section"><h2>允许重复的站点</h2><p class="small muted">每行一个精确来源，例如 https://example.com。列表内站点不参与清理，也不显示新页重复提醒。</p><label for="duplicate-allowlist">站点来源</label><textarea id="duplicate-allowlist" rows="4" placeholder="https://example.com"></textarea><div class="actions"><button id="save-allowlist" type="button">保存例外名单</button></div><p id="policy-status" role="status" aria-live="polite"></p></section>
+</main>
+    </div>
+    <script type="module" src="cleanup-page.js"></script>
+  </body>
+</html>

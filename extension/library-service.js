@@ -1,6 +1,9 @@
 import { safeHttpUrl } from './url-identity.js';
+import { validateAutoSnapshots } from './library-schema.js';
 
 const split = tab => Number.isInteger(tab?.splitViewId) && tab.splitViewId >= 0;
+const RESTORE_PREVIEW_KEY = 'workspaceRestorePreview';
+const RESTORE_PREVIEW_TTL = 5 * 60 * 1000;
 const safeName = value => {
   if (typeof value !== 'string' || !value.trim() || value.length > 80) throw Error('工作区名称无效。');
   return value.trim();
@@ -88,7 +91,7 @@ export function createLibraryService(api, store, undo, suppression, operationLoc
     return result;
   }
 
-  async function saveWorkspace(message) {
+  async function captureWorkspace(message, id = crypto.randomUUID()) {
     const name = safeName(message.name);
     if (!['current', 'all'].includes(message.scope)) throw Error('工作区保存范围无效。');
     if (message.scope === 'current' && !Number.isInteger(message.windowId)) throw Error('无法确定当前窗口。');
@@ -107,12 +110,30 @@ export function createLibraryService(api, store, undo, suppression, operationLoc
       if (!windows.has(tab.windowId)) windows.set(tab.windowId, []);
       windows.get(tab.windowId).push(entry);
     }
-    const workspace = { id: crypto.randomUUID(), name, savedAt: Date.now(),
+    const workspace = { id, name, savedAt: Date.now(),
       windows: [...windows.values()].map(items => ({ tabs: items.sort((a, b) => a.index - b.index) })) };
     if (!workspace.windows.length) throw Error('没有可安全保存的 HTTP(S) 标签。');
-    await store.updateLibrary(library => ({ ...library, workspaces: [workspace, ...library.workspaces] }));
     const saved = workspace.windows.reduce((sum, window) => sum + window.tabs.length, 0);
+    return { workspace, saved, skipped };
+  }
+
+  async function saveWorkspace(message) {
+    const { workspace, saved, skipped } = await captureWorkspace(message);
+    await store.updateLibrary(library => ({ ...library, workspaces: [workspace, ...library.workspaces] }));
     return { workspace: { ...workspace, windowCount: workspace.windows.length, tabCount: saved }, saved, skipped, failed: 0 };
+  }
+
+  async function updateWorkspace(message) {
+    if (typeof message?.id !== 'string') throw Error('工作区 ID 无效。');
+    const { workspace, saved, skipped } = await captureWorkspace(message, message.id);
+    const result = await store.updateWorkspace(message.id, message.baseRevision, workspace);
+    return { workspace: { ...workspace, windowCount: workspace.windows.length, tabCount: saved }, saved, skipped, failed: 0,
+      revision: result.library.revision, historyEntry: result.historyEntry };
+  }
+
+  async function captureCurrentWorkspace() {
+    const result = await captureWorkspace({ name: '当前浏览器', scope: 'all' }, 'current-browser');
+    return { ...result, workspace: { ...result.workspace, savedAt: 0 } };
   }
 
   async function createManaged(url, create) {
@@ -146,20 +167,22 @@ export function createLibraryService(api, store, undo, suppression, operationLoc
     } catch { return false; }
   }
 
-  async function restoreWorkspace(id) {
-    return operationLock.run('restore', async () => {
-      const library = await store.getLibrary();
-      const workspace = library.workspaces.find(item => item.id === id);
-      if (!workspace) throw Error('工作区不存在或已删除。');
-      const groups = new Map((await api.tabGroups.query({})).map(group => [group.id, group]));
-      const existing = new Set();
-      for (const tab of await api.tabs.query({ windowType: 'normal' })) {
-        if (await eligibleExisting(tab, groups)) existing.add(tab.url);
-        else {
-          const pending = await controlledPendingUrl(tab, groups);
-          if (pending) existing.add(pending);
-        }
+  async function collectExistingUrls() {
+    const groups = new Map((await api.tabGroups.query({})).map(group => [group.id, group]));
+    const existing = new Set();
+    for (const tab of await api.tabs.query({ windowType: 'normal' })) {
+      if (await eligibleExisting(tab, groups)) existing.add(tab.url);
+      else {
+        const pending = await controlledPendingUrl(tab, groups);
+        if (pending) existing.add(pending);
       }
+    }
+    return { groups, existing };
+  }
+
+  async function restoreWorkspaceData(workspace) {
+    return operationLock.run('restore', async () => {
+      const { existing } = await collectExistingUrls();
       let restored = 0;
       let reused = 0;
       let failed = 0;
@@ -233,14 +256,91 @@ export function createLibraryService(api, store, undo, suppression, operationLoc
     });
   }
 
-  async function deleteWorkspace(id) {
-    let deleted = false;
-    await store.updateLibrary(library => {
-      const workspaces = library.workspaces.filter(item => item.id !== id);
-      deleted = workspaces.length !== library.workspaces.length;
-      return { ...library, workspaces };
-    });
-    return { deleted };
+  async function restoreWorkspace(id) {
+    const library = await store.getLibrary();
+    const workspace = library.workspaces.find(item => item.id === id);
+    if (!workspace) throw Error('工作区不存在或已删除。');
+    return restoreWorkspaceData(workspace);
   }
-  return { get, openFavorite, saveWorkspace, restoreWorkspace, deleteWorkspace };
+
+  async function workspaceDigest(workspace) {
+    const bytes = new TextEncoder().encode(JSON.stringify(workspace));
+    if (globalThis.crypto?.subtle) {
+      const result = await crypto.subtle.digest('SHA-256', bytes);
+      return [...new Uint8Array(result)].map(value => value.toString(16).padStart(2, '0')).join('');
+    }
+    let hash = 2166136261;
+    for (const byte of bytes) { hash ^= byte; hash = Math.imul(hash, 16777619); }
+    return `fallback-${(hash >>> 0).toString(16)}`;
+  }
+
+  async function resolveWorkspaceVersion({ id, versionId, source }) {
+    if (typeof id !== 'string' || !['workspace', 'history', 'auto'].includes(source)) throw Error('工作区恢复来源无效。');
+    if (source === 'workspace') {
+      const workspace = (await store.getLibrary()).workspaces.find(item => item.id === id);
+      if (!workspace) throw Error('工作区不存在或已删除。');
+      return workspace;
+    }
+    if (typeof versionId !== 'string') throw Error('工作区版本无效。');
+    if (source === 'history') {
+      const entry = (await store.getWorkspaceHistory(id)).find(item => item.versionId === versionId);
+      if (!entry) throw Error('工作区历史版本不存在。');
+      return entry.workspace;
+    }
+    const stored = await api.storage.local.get({ autoSnapshots: [] });
+    const snapshot = validateAutoSnapshots(stored.autoSnapshots).find(item => item.snapshotId === versionId);
+    const workspace = snapshot?.workspaces.find(item => item.id === id);
+    if (!workspace) throw Error('自动快照中的工作区不存在。');
+    return workspace;
+  }
+
+  const tabItems = workspace => workspace.windows.flatMap(window => window.tabs);
+  async function previewRestore(selection) {
+    const workspace = await resolveWorkspaceVersion(selection);
+    const current = (await store.getLibrary()).workspaces.find(item => item.id === selection.id) || null;
+    const currentUrls = new Set(current ? tabItems(current).map(item => item.url) : []);
+    const selectedItems = tabItems(workspace);
+    const selectedUrls = new Set(selectedItems.map(item => item.url));
+    const { existing } = await collectExistingUrls();
+    const unique = new Set();
+    const missingUrls = [];
+    const existingUrls = [];
+    let duplicateSaved = 0;
+    let reused = 0;
+    let missing = 0;
+    for (const item of selectedItems) {
+      if (existing.has(item.url)) { reused += 1; if (!existingUrls.includes(item.url)) existingUrls.push(item.url); }
+      else if (unique.has(item.url)) duplicateSaved += 1;
+      else { unique.add(item.url); missing += 1; missingUrls.push(item.url); }
+    }
+    const token = crypto.randomUUID();
+    const digest = await workspaceDigest(workspace);
+    await api.storage.session.set({ [RESTORE_PREVIEW_KEY]: { token, expiresAt: Date.now() + RESTORE_PREVIEW_TTL,
+      selection: { id: selection.id, versionId: selection.versionId, source: selection.source }, digest } });
+    return { token, workspace: { id: workspace.id, name: workspace.name, savedAt: workspace.savedAt,
+      windowCount: workspace.windows.length, tabCount: selectedItems.length },
+    diff: { added: selectedItems.filter(item => !currentUrls.has(item.url)).map(item => ({ url: item.url, title: item.title })),
+      removed: current ? tabItems(current).filter(item => !selectedUrls.has(item.url)).map(item => ({ url: item.url, title: item.title })) : [],
+      unchanged: selectedItems.filter(item => currentUrls.has(item.url)).map(item => ({ url: item.url, title: item.title })) },
+    restore: { missing, reused, duplicateSaved, missingUrls, existingUrls } };
+  }
+
+  async function restorePreview(token) {
+    if (typeof token !== 'string') throw Error('恢复确认已失效，请重新预览。');
+    const record = (await api.storage.session.get({ [RESTORE_PREVIEW_KEY]: null }))[RESTORE_PREVIEW_KEY];
+    if (!record || record.token !== token || record.expiresAt < Date.now()) throw Error('恢复确认已过期，请重新预览。');
+    const workspace = await resolveWorkspaceVersion(record.selection);
+    if (await workspaceDigest(workspace) !== record.digest) throw Error('工作区版本已变化，请重新预览。');
+    const result = await restoreWorkspaceData(workspace);
+    await api.storage.session.remove(RESTORE_PREVIEW_KEY).catch(() => {});
+    return result;
+  }
+
+  async function getWorkspaceHistory(id) { return store.getWorkspaceHistory(id); }
+
+  async function deleteWorkspace(id) {
+    return store.deleteWorkspace(id);
+  }
+  return { get, openFavorite, saveWorkspace, updateWorkspace, captureCurrentWorkspace, restoreWorkspace, previewRestore, restorePreview,
+    getWorkspaceHistory, deleteWorkspace };
 }

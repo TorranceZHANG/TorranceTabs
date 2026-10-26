@@ -40,6 +40,23 @@ export function validateSettings(value) {
     const enabled = rule.enabled ?? true;
     if (typeof enabled !== 'boolean') throw new Error(`${label}：启用状态无效。`);
     const prefix = url.href;
+    const rawExcludePaths = rule.excludePaths ?? [];
+    if (!Array.isArray(rawExcludePaths) || rawExcludePaths.length > 20) {
+      throw new Error(`${label}：排除路径必须是不超过 20 项的列表。`);
+    }
+    const seenPaths = new Set();
+    const excludePaths = rawExcludePaths.map(path => {
+      if (typeof path !== 'string' || !path.startsWith('/') || path.length > 2048 || path.includes('?') || path.includes('#')) {
+        throw new Error(`${label}：排除路径必须是以 / 开头的同站点 pathname 前缀。`);
+      }
+      let parsed;
+      try { parsed = new URL(path, url.origin); } catch { throw new Error(`${label}：排除路径无效。`); }
+      if (parsed.origin !== url.origin || parsed.pathname !== path || parsed.search || parsed.hash || seenPaths.has(path)) {
+        throw new Error(`${label}：排除路径必须是同站点且不能重复。`);
+      }
+      seenPaths.add(path);
+      return path;
+    });
     if (enabled) {
       if (prefixes.has(prefix)) throw new Error(`${label}：这个网址前缀已有启用的规则。`);
       prefixes.add(prefix);
@@ -48,18 +65,37 @@ export function validateSettings(value) {
       }
       groupColors.set(group, rule.color);
     }
-    return { prefix, group, color: rule.color, enabled };
+    return { prefix, group, color: rule.color, enabled, excludePaths };
   });
   return { enabled: value.enabled, duplicatePromptEnabled, rules };
 }
 
-export function findRule(value, rules) {
+export function explainRule(value, rules) {
   const url = httpUrl(value);
-  if (!url) return null;
-  let best = null;
-  for (const rule of rules) {
-    if (rule.enabled !== false && url.href.startsWith(rule.prefix)
-      && (!best || rule.prefix.length > best.prefix.length)) best = rule;
+  if (!url) return { rule: null, reason: 'invalid-url', matchedPrefix: null, excludedPaths: [] };
+  const candidates = (Array.isArray(rules) ? rules : [])
+    .filter(rule => rule?.enabled !== false && typeof rule.prefix === 'string' && url.href.startsWith(rule.prefix))
+    .sort((a, b) => b.prefix.length - a.prefix.length);
+  const excludedPaths = [];
+  let matchedPrefix = null;
+  for (const rule of candidates) {
+    if (!matchedPrefix) matchedPrefix = rule.prefix;
+    const matches = (Array.isArray(rule.excludePaths) ? rule.excludePaths : [])
+      .filter(path => typeof path === 'string' && url.pathname.startsWith(path));
+    if (matches.length) {
+      for (const path of matches) if (!excludedPaths.includes(path)) excludedPaths.push(path);
+      continue;
+    }
+    return { rule, reason: 'matched', matchedPrefix: rule.prefix, excludedPaths };
   }
-  return best;
+  return {
+    rule: null,
+    reason: candidates.length ? 'excluded' : 'no-match',
+    matchedPrefix,
+    excludedPaths,
+  };
+}
+
+export function findRule(value, rules) {
+  return explainRule(value, rules).rule;
 }

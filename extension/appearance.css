@@ -1,0 +1,24 @@
+:root { --hover: #edf3f0; --active: #e4ede8; --on-accent: #fff; }
+:root[data-theme=dark] { color-scheme:dark; --canvas:#101918; --surface:#182422; --surface-muted:#1e2c29; --text:#e3eeea; --text-muted:#acbfb8; --border:#354b43; --border-strong:#597369; --accent:#4bc8aa; --accent-dark:#75dfc2; --accent-soft:#203f35; --danger:#ffaaa2; --danger-soft:#442925; --warning:#edca86; --warning-soft:#3c3321; --success:#76d8ad; --success-soft:#203e30; --hover:#2b3e36; --active:#334c41; --on-accent:#102820; }
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme=light]) { color-scheme:dark; --canvas:#101918; --surface:#182422; --surface-muted:#1e2c29; --text:#e3eeea; --text-muted:#acbfb8; --border:#354b43; --border-strong:#597369; --accent:#4bc8aa; --accent-dark:#75dfc2; --accent-soft:#203f35; --danger:#ffaaa2; --danger-soft:#442925; --warning:#edca86; --warning-soft:#3c3321; --success:#76d8ad; --success-soft:#203e30; --hover:#2b3e36; --active:#334c41; --on-accent:#102820; }
+}
+button:hover:not(:disabled), .button:hover, .secondary-button:hover { background:var(--hover); border-color:var(--border-strong); }
+button:active:not(:disabled), .button:active { background:var(--active); }
+button.primary,.primary-button { color:var(--on-accent); }
+.risk-note { background:var(--warning-soft); color:var(--warning); border-left-color:var(--warning); }
+.external-notice { background:var(--warning-soft); color:var(--warning); border-color:var(--warning); }
+.tab-row+.tab-row { border-top-color:var(--border); }
+.appearance-controls { margin-top:20px; border-top:1px solid var(--border); padding:12px 8px 0; font-size:12px; color:var(--text-muted); }
+.appearance-controls summary { width:fit-content; min-height:28px; }
+.appearance-controls label { display:grid; grid-template-columns:36px minmax(0,1fr); align-items:center; gap:8px; margin-top:8px; }
+.appearance-controls select { min-height:32px; padding:5px 8px; font-size:12px; }
+.popup-shell .appearance-controls { margin-top:6px; padding-top:6px; }
+:root[data-density=compact] .app-main { padding-top:22px; }
+:root[data-density=compact] .tab-row { padding:6px 12px; }
+:root[data-density=compact] .tool-section { padding:20px; }
+:root[data-density=compact] .rule-card { padding:16px; }
+:root[data-density=compact] .reading-item { padding:8px 0; }
+:root[data-density=compact] .page-heading { margin-bottom:18px; }
+:root[data-density=compact] .site-grid { gap:10px; }
+:root[data-density=compact] .app-nav a { padding-top:7px; padding-bottom:7px; }

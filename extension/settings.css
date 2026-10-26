@@ -536,3 +536,4 @@ select:focus {
     transition-duration: 0.01ms !important;
   }
 }
+.rule-assistant{padding:24px;margin-bottom:20px;display:grid;gap:14px}.assistant-fields{display:grid;grid-template-columns:1fr 1fr;gap:14px}.assistant-fields label{min-width:0}.assistant-fields label:first-child{grid-column:1/-1}.rule-assistant .actions{display:flex;gap:8px;flex-wrap:wrap}.rule-assistant details{border-top:1px solid var(--border);padding-top:12px}.rule-assistant details p{margin:8px 0}.exclusion-field{display:grid;gap:6px;margin-top:16px;color:var(--text-muted);font-size:12px}.exclusion-field textarea{max-width:100%;min-height:64px}#rules-impact ul{max-height:280px;overflow:auto;padding-left:20px;font-size:12px;overflow-wrap:anywhere}@media(max-width:500px){.assistant-fields{grid-template-columns:1fr}.rule-assistant{padding:16px}}

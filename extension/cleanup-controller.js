@@ -53,7 +53,7 @@ export function createCleanupController(api, deduplicate, options = {}) {
   })();
 
   const getStatus = async () => { await ready; return structuredClone(status); };
-  const run = (origin = 'panel') => {
+  const run = (origin = 'panel', request) => {
     if (inFlight) return inFlight;
     const execute = async () => {
       await ready;
@@ -66,7 +66,7 @@ export function createCleanupController(api, deduplicate, options = {}) {
       }
       await badge(status);
       try {
-        const result = await deduplicate();
+        const result = await deduplicate(request);
         const next = { ...operation, state: 'done', finishedAt: Date.now(), result };
         if (!(await store(next))) {
           status.warning = '清理结果未能保存，关闭面板后可能无法查看；请以当前标签列表为准。';

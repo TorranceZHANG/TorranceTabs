@@ -39,7 +39,8 @@ export async function initializeQuickTools(setIdentity) {
     $('#quick-undo').disabled = !undoAvailable;
     $('#quick-undo').textContent = available ? `恢复清理记录（${available}）` : '暂无可恢复的清理记录';
     const rules = data.library.dedupRules;
-    setIdentity(url => canonicalUrl(url, rules));
+    const { duplicateAllowlist = [] } = await chrome.storage.local.get({ duplicateAllowlist: [] });
+    setIdentity(url => { try { return duplicateAllowlist.includes(new URL(url).origin) ? null : canonicalUrl(url, rules); } catch { return null; } });
   }
   bind($('#open-tools'), () => tools());
   bind($('#undo-details'), () => tools('#recovery'));
@@ -49,7 +50,7 @@ export async function initializeQuickTools(setIdentity) {
     await refresh();
   });
   chrome.storage.onChanged.addListener((changes, area) => {
-    if ((area === 'local' && (changes.library || changes.cleanupUndo)) || (area === 'session' && Object.keys(changes).some(key => /undo|cleanup/i.test(key)))) {
+    if ((area === 'local' && (changes.library || changes.cleanupUndo || changes.duplicateAllowlist)) || (area === 'session' && Object.keys(changes).some(key => /undo|cleanup/i.test(key)))) {
       refresh().catch(error => say(error.message));
     }
   });

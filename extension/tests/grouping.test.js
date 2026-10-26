@@ -261,3 +261,36 @@ test('稍后读新写入遵守标题与数量上限，旧超限数据仍可移�
   await update({ type: 'REMOVE_READING_ITEM', id: 'legacy-0' });
   assert.equal(state.data.readingList.length, 2000);
 });
+
+test('窗口预览只读并区分匹配、排除、暂停和不合格标签', async () => {
+  const { state, api } = fixture([
+    { id: 1, title: '可整理' },
+    { id: 2, title: '排除', url: 'https://example.com/private/doc' },
+    { id: 3, title: '暂停' },
+    { id: 4, title: '固定', pinned: true },
+  ]);
+  state.data.settings.rules[0].excludePaths = ['/private'];
+  const engine = createAutoGrouper(api, console.warn, tab => tab.id === 3);
+  const preview = await engine.previewWindow({ windowId: 1 });
+  assert.deepEqual({ matched: preview.matched, excluded: preview.excluded, skipped: preview.skipped },
+    { matched: 1, excluded: 1, skipped: 2 });
+  assert.deepEqual(preview.results.map(item => [item.tabId, item.targetGroup, item.reason]), [
+    [1, '工作', 'matched'], [2, null, 'excluded'], [3, null, 'paused'], [4, null, 'ineligible'],
+  ]);
+  assert.equal(state.calls.length, 0);
+  assert.equal(state.groups.size, 0);
+});
+
+test('窗口预览与执行一致：仅有同名shared目标组时不报告可分组', async () => {
+  const { state, engine } = fixture([{ id: 1 }], [
+    { id: 7, title: '工作', windowId: 1, shared: true },
+  ]);
+  const preview = await engine.previewWindow({ windowId: 1 });
+  assert.deepEqual(preview.results[0], {
+    tabId: 1, title: '', url: 'https://example.com/one', targetGroup: null, reason: 'shared-target',
+  });
+  assert.deepEqual({ matched: preview.matched, excluded: preview.excluded, skipped: preview.skipped },
+    { matched: 0, excluded: 0, skipped: 1 });
+  assert.deepEqual(await engine.applyWindow(1), { grouped: 0, skipped: 1, failed: 0 });
+  assert.equal(state.tabs.get(1).groupId, -1);
+});

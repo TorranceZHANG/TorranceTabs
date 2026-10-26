@@ -1,10 +1,63 @@
 import { DEFAULT_SETTINGS, validateSettings } from './rules.js';
-import { DEFAULT_LIBRARY, validateBackup, validateExistingReading, validateFavorites, validateLibrary, validateStoredReading } from './library-schema.js';
+import { DEFAULT_LIBRARY, validateBackup, validateDuplicateAllowlist, validateExistingReading, validateFavorites, validateLibrary,
+  validateStoredReading, validateWorkspace, validateWorkspaceHistory, validateAutoSnapshots, validateSnapshotConfig } from './library-schema.js';
 import { normalizeDedupRules } from './url-identity.js';
+import { DEFAULT_PREFERENCES, validatePreferences } from './preferences.js';
 
 const TOKEN_TTL = 5 * 60 * 1000;
 const IMPORT_TOKEN_KEY = 'configImportToken';
+export const LOCAL_DATA_BYTES_LIMIT = 5 * 1024 * 1024;
+export const WORKSPACE_ARCHIVE_BYTES_LIMIT = 1024 * 1024;
+export const WORKSPACE_HISTORY_KEY = 'workspaceHistory';
+const LOCAL_DEFAULTS = Object.freeze({ settings: DEFAULT_SETTINGS, readingList: [], library: DEFAULT_LIBRARY,
+  preferences: DEFAULT_PREFERENCES, duplicateAllowlist: [], workspaceHistory: { schemaVersion: 1, byWorkspace: {} },
+  autoSnapshotConfig: { enabled: false, intervalMinutes: 30, retention: 5 }, autoSnapshots: [], selectiveSyncConfig: { enabled: false },
+  selectiveSyncDeviceId: null });
 const clone = value => structuredClone(value);
+
+function byteLength(value) {
+  try { return new TextEncoder().encode(JSON.stringify(value)).length; } catch { throw Error('本地数据无法序列化。'); }
+}
+
+export function assertLocalDataSize(value) {
+  if (byteLength(value) > LOCAL_DATA_BYTES_LIMIT) throw Error('本地工具数据超过 5 MB 总限额，请先删除部分工作区或历史版本。');
+}
+
+function archiveBytes(workspaceHistory, autoSnapshots) {
+  return byteLength({ workspaceHistory, autoSnapshots });
+}
+
+function pruneWorkspaceArchives(rawHistory, rawSnapshots, protectedItem = null) {
+  const history = validateWorkspaceHistory(rawHistory);
+  let snapshots = validateAutoSnapshots(rawSnapshots);
+  if (protectedItem?.entry && byteLength(protectedItem.entry) > WORKSPACE_ARCHIVE_BYTES_LIMIT) {
+    throw Error('单个工作区历史或快照超过 1 MB 限额，未保存该版本。');
+  }
+  const byWorkspace = Object.fromEntries(Object.entries(history.byWorkspace).map(([id, entries]) => [id, [...entries]]));
+  while (archiveBytes({ schemaVersion: 1, byWorkspace }, snapshots) > WORKSPACE_ARCHIVE_BYTES_LIMIT) {
+    const candidates = [];
+    for (const [workspaceId, entries] of Object.entries(byWorkspace)) entries.forEach(entry => {
+      if (!(protectedItem?.type === 'history' && protectedItem.id === entry.versionId)) {
+        candidates.push({ type: 'history', id: entry.versionId, workspaceId, timestamp: entry.archivedAt });
+      }
+    });
+    snapshots.forEach(entry => {
+      if (!(protectedItem?.type === 'snapshot' && protectedItem.id === entry.snapshotId)) {
+        candidates.push({ type: 'snapshot', id: entry.snapshotId, timestamp: entry.capturedAt });
+      }
+    });
+    candidates.sort((left, right) => left.timestamp - right.timestamp
+      || left.type.localeCompare(right.type) || left.id.localeCompare(right.id));
+    const oldest = candidates[0];
+    if (!oldest) throw Error('单个工作区历史或快照超过 1 MB 限额，未保存该版本。');
+    if (oldest.type === 'snapshot') snapshots = snapshots.filter(item => item.snapshotId !== oldest.id);
+    else {
+      byWorkspace[oldest.workspaceId] = byWorkspace[oldest.workspaceId].filter(item => item.versionId !== oldest.id);
+      if (!byWorkspace[oldest.workspaceId].length) delete byWorkspace[oldest.workspaceId];
+    }
+  }
+  return { workspaceHistory: { schemaVersion: 1, byWorkspace }, autoSnapshots: snapshots };
+}
 
 export function createLocalWriteQueue() {
   let tail = Promise.resolve();
@@ -36,12 +89,16 @@ function conflictsAndMerge(current, incoming, mode) {
   const conflicts = [];
   const different = (left, right) => JSON.stringify(left) !== JSON.stringify(right);
   const summary = { settingsChanged: different(current.settings, incoming.settings), readingAdded: 0, readingReplaced: 0,
-    favoritesChanged: 0, dedupRulesChanged: 0, workspacesAdded: 0, workspacesReplaced: 0, totalItems: 0 };
+    favoritesChanged: 0, dedupRulesChanged: 0, workspacesAdded: 0, workspacesReplaced: 0,
+    preferencesChanged: incoming.preferences !== undefined && different(current.preferences, incoming.preferences),
+    duplicateAllowlistChanged: 0, totalItems: 0 };
   let settings = incoming.settings;
   let readingList;
   let favorites;
   let dedupRules;
   let workspaces;
+  let preferences = current.preferences;
+  let duplicateAllowlist = current.duplicateAllowlist;
   if (mode === 'replace') {
     readingList = incoming.readingList;
     favorites = incoming.favorites;
@@ -51,6 +108,11 @@ function conflictsAndMerge(current, incoming, mode) {
     summary.favoritesChanged = favorites.filter(Boolean).length;
     summary.dedupRulesChanged = dedupRules.length;
     summary.workspacesAdded = workspaces.length;
+    if (incoming.preferences !== undefined) preferences = incoming.preferences;
+    if (incoming.duplicateAllowlist !== undefined) {
+      duplicateAllowlist = incoming.duplicateAllowlist;
+      summary.duplicateAllowlistChanged = duplicateAllowlist.length;
+    }
   } else {
     const mergedRules = [...current.settings.rules];
     const byPrefix = new Map(mergedRules.map(rule => [rule.prefix, rule]));
@@ -125,18 +187,46 @@ function conflictsAndMerge(current, incoming, mode) {
       spaces.set(item.id, item);
     }
     workspaces = [...spaces.values()];
+    if (incoming.preferences !== undefined && different(current.preferences, incoming.preferences)) {
+      conflicts.push({ section: 'preferences', key: 'preferences', current: current.preferences, incoming: incoming.preferences });
+      summary.preferencesChanged = false;
+    }
+    if (incoming.duplicateAllowlist !== undefined) {
+      const origins = new Set(current.duplicateAllowlist);
+      for (const origin of incoming.duplicateAllowlist) if (!origins.has(origin)) {
+        origins.add(origin);
+        summary.duplicateAllowlistChanged += 1;
+      }
+      duplicateAllowlist = [...origins];
+    }
   }
   summary.totalItems = readingList.length + favorites.filter(Boolean).length + dedupRules.length + workspaces.length;
   const next = { settings: validateSettings(settings), readingList: validateStoredReading(readingList),
-    library: validateLibrary({ schemaVersion: 1, revision: current.library.revision + 1, favorites, dedupRules, workspaces }) };
+    library: validateLibrary({ schemaVersion: 1, revision: current.library.revision + 1, favorites, dedupRules, workspaces }),
+    preferences: validatePreferences(preferences), duplicateAllowlist: validateDuplicateAllowlist(duplicateAllowlist) };
   return { summary, conflicts, next };
 }
 
 export function createLibraryStore(api, enqueue = createLocalWriteQueue(), now = () => Date.now()) {
+  async function localState() {
+    const stored = await api.storage.local.get(null);
+    return { ...clone(LOCAL_DEFAULTS), ...(stored || {}) };
+  }
+  async function setLocal(changes, base = null) {
+    const current = base || await localState();
+    const prospective = { ...current, ...changes };
+    const currentBytes = byteLength(current);
+    const prospectiveBytes = byteLength(prospective);
+    if (prospectiveBytes > LOCAL_DATA_BYTES_LIMIT && prospectiveBytes > currentBytes) {
+      throw Error('本地工具数据超过 5 MB 总限额，请先删除部分工作区或历史版本。');
+    }
+    await api.storage.local.set(changes);
+  }
   async function snapshot() {
-    const stored = await api.storage.local.get({ settings: DEFAULT_SETTINGS, readingList: [], library: DEFAULT_LIBRARY });
+    const stored = await localState();
     return { settings: validateSettings(stored.settings), readingList: validateExistingReading(stored.readingList),
-      library: validateLibrary(stored.library) };
+      library: validateLibrary(stored.library), preferences: validatePreferences(stored.preferences),
+      duplicateAllowlist: validateDuplicateAllowlist(stored.duplicateAllowlist) };
   }
   async function getLibrary() { return enriched((await snapshot()).library); }
   async function saveLibrary(message) {
@@ -147,17 +237,30 @@ export function createLibraryStore(api, enqueue = createLocalWriteQueue(), now =
       }
       const library = { ...current.library, revision: current.library.revision + 1,
         favorites: validateFavorites(message.favorites), dedupRules: normalizeDedupRules(message.dedupRules) };
-      await api.storage.local.set({ library });
+      await setLocal({ library });
       return enriched(library);
     });
   }
   async function saveSettings(settings) {
-    return enqueue(async () => { const valid = validateSettings(settings); await api.storage.local.set({ settings: valid }); return valid; });
+    return enqueue(async () => { const valid = validateSettings(settings); await setLocal({ settings: valid }); return valid; });
+  }
+  async function getPreferences() { return (await snapshot()).preferences; }
+  async function savePreferences(preferences) {
+    return enqueue(async () => { const valid = validatePreferences(preferences); await setLocal({ preferences: valid }); return valid; });
+  }
+  async function getDuplicateAllowlist() { return (await snapshot()).duplicateAllowlist; }
+  async function saveDuplicateAllowlist(origins) {
+    return enqueue(async () => {
+      const duplicateAllowlist = validateDuplicateAllowlist(origins);
+      await setLocal({ duplicateAllowlist });
+      return duplicateAllowlist;
+    });
   }
   async function exportConfig() {
     const current = await snapshot();
-    return validateBackup({ schemaVersion: 1, exportedAt: now(), settings: current.settings, readingList: current.readingList,
-      favorites: current.library.favorites, dedupRules: current.library.dedupRules, workspaces: current.library.workspaces });
+    return validateBackup({ schemaVersion: 2, exportedAt: now(), settings: current.settings, readingList: current.readingList,
+      favorites: current.library.favorites, dedupRules: current.library.dedupRules, workspaces: current.library.workspaces,
+      preferences: current.preferences, duplicateAllowlist: current.duplicateAllowlist });
   }
   async function previewConfig(raw, mode) {
     if (!['merge', 'replace'].includes(mode)) throw Error('导入模式无效。');
@@ -179,7 +282,18 @@ export function createLibraryStore(api, enqueue = createLocalWriteQueue(), now =
       const current = await snapshot();
       if (await digestSnapshot(current) !== preview.baseDigest) throw Error('数据已在其他页面修改，请重新预览后导入。');
       const next = conflictsAndMerge(current, backup, preview.mode).next;
-      await api.storage.local.set(next);
+      const stored = await localState();
+      const changes = { ...next };
+      if (preview.mode === 'replace') {
+        const allowedIds = new Set(next.library.workspaces.map(item => item.id));
+        const history = validateWorkspaceHistory(stored.workspaceHistory);
+        const byWorkspace = Object.fromEntries(Object.entries(history.byWorkspace)
+          .filter(([workspaceId]) => allowedIds.has(workspaceId)));
+        const archives = pruneWorkspaceArchives({ schemaVersion: 1, byWorkspace }, stored.autoSnapshots);
+        changes.workspaceHistory = archives.workspaceHistory;
+        changes.autoSnapshots = archives.autoSnapshots;
+      }
+      await setLocal(changes, stored);
       await api.storage.session.remove(IMPORT_TOKEN_KEY).catch(() => {});
       return { imported: true, revision: next.library.revision };
     });
@@ -189,9 +303,81 @@ export function createLibraryStore(api, enqueue = createLocalWriteQueue(), now =
       const current = await snapshot();
       const changed = await mutator(clone(current.library));
       const library = validateLibrary({ ...changed, revision: current.library.revision + 1 });
-      await api.storage.local.set({ library });
+      await setLocal({ library });
       return library;
     });
   }
-  return { snapshot, getLibrary, saveLibrary, saveSettings, exportConfig, previewConfig, importConfig, updateLibrary, enqueue };
+  async function updateWorkspace(id, baseRevision, rawWorkspace) {
+    return enqueue(async () => {
+      const stored = await localState();
+      const library = validateLibrary(stored.library);
+      if (!Number.isInteger(baseRevision) || baseRevision !== library.revision) {
+        throw Error('工具库已在其他页面更新，请重新读取后再保存。');
+      }
+      const index = library.workspaces.findIndex(item => item.id === id);
+      if (index < 0) throw Error('工作区不存在或已删除。');
+      const workspace = validateWorkspace(rawWorkspace);
+      if (workspace.id !== id) throw Error('工作区 ID 不可修改。');
+      const history = validateWorkspaceHistory(stored.workspaceHistory);
+      const entries = history.byWorkspace[id] || [];
+      const entry = { versionId: crypto.randomUUID(), archivedAt: now(), workspace: clone(library.workspaces[index]) };
+      const workspaceHistory = { ...history, byWorkspace: { ...history.byWorkspace, [id]: [entry, ...entries].slice(0, 5) } };
+      const archives = pruneWorkspaceArchives(workspaceHistory, stored.autoSnapshots,
+        { type: 'history', id: entry.versionId, entry });
+      const workspaces = [...library.workspaces];
+      workspaces[index] = workspace;
+      const nextLibrary = validateLibrary({ ...library, revision: library.revision + 1, workspaces });
+      await setLocal({ library: nextLibrary, [WORKSPACE_HISTORY_KEY]: archives.workspaceHistory,
+        autoSnapshots: archives.autoSnapshots }, stored);
+      return { library: enriched(nextLibrary), historyEntry: clone(entry) };
+    });
+  }
+  async function getWorkspaceHistory(id) {
+    const stored = await localState();
+    const history = validateWorkspaceHistory(stored.workspaceHistory);
+    return clone(history.byWorkspace[id] || []);
+  }
+  async function deleteWorkspace(id) {
+    return enqueue(async () => {
+      const stored = await localState();
+      const library = validateLibrary(stored.library);
+      const workspaces = library.workspaces.filter(item => item.id !== id);
+      if (workspaces.length === library.workspaces.length) return { deleted: false, library: enriched(library) };
+      const history = validateWorkspaceHistory(stored.workspaceHistory);
+      const byWorkspace = { ...history.byWorkspace };
+      delete byWorkspace[id];
+      const nextLibrary = validateLibrary({ ...library, revision: library.revision + 1, workspaces });
+      await setLocal({ library: nextLibrary, workspaceHistory: { schemaVersion: 1, byWorkspace } }, stored);
+      return { deleted: true, library: enriched(nextLibrary) };
+    });
+  }
+  async function configureAutoSnapshots(rawConfig) {
+    return enqueue(async () => {
+      const stored = await localState();
+      const config = validateSnapshotConfig(rawConfig);
+      const snapshots = validateAutoSnapshots(stored.autoSnapshots).slice(0, config.retention);
+      const archives = pruneWorkspaceArchives(stored.workspaceHistory, snapshots);
+      await setLocal({ autoSnapshotConfig: config, workspaceHistory: archives.workspaceHistory,
+        autoSnapshots: archives.autoSnapshots }, stored);
+      return config;
+    });
+  }
+  async function saveAutoSnapshot(rawSnapshot, { manual = false } = {}) {
+    return enqueue(async () => {
+      const stored = await localState();
+      const config = validateSnapshotConfig(stored.autoSnapshotConfig);
+      if (!manual && !config.enabled) return { captured: false, reason: 'disabled' };
+      const snapshot = validateAutoSnapshots([rawSnapshot])[0];
+      const existing = validateAutoSnapshots(stored.autoSnapshots);
+      if (existing[0]?.digest === snapshot.digest) return { captured: false, reason: 'unchanged' };
+      const snapshots = [snapshot, ...existing].slice(0, config.retention);
+      const archives = pruneWorkspaceArchives(stored.workspaceHistory, snapshots,
+        { type: 'snapshot', id: snapshot.snapshotId, entry: snapshot });
+      await setLocal({ workspaceHistory: archives.workspaceHistory, autoSnapshots: archives.autoSnapshots }, stored);
+      return { captured: true, snapshot: clone(snapshot) };
+    });
+  }
+  return { snapshot, getLibrary, saveLibrary, saveSettings, getPreferences, savePreferences, getDuplicateAllowlist,
+    saveDuplicateAllowlist, exportConfig, previewConfig, importConfig, updateLibrary, updateWorkspace, getWorkspaceHistory,
+    deleteWorkspace, configureAutoSnapshots, saveAutoSnapshot, setLocal, localState, enqueue };
 }

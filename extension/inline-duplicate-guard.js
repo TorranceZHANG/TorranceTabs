@@ -2,6 +2,7 @@ import { DEFAULT_SETTINGS, validateSettings } from './rules.js';
 import { createPopupDuplicateGuard } from './popup-duplicate-guard.js';
 import { DEFAULT_LIBRARY } from './library-schema.js';
 import { canonicalUrl } from './url-identity.js';
+import { DEFAULT_PREFERENCES, validatePreferences } from './preferences.js';
 
 const STATE_KEY = 'inlineDuplicateState';
 const TOKEN = /^inline-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
@@ -13,6 +14,8 @@ const destination = tab => tab?.pendingUrl ? http(tab.pendingUrl) : http(tab?.ur
 
 export function createInlineDuplicateGuard(api, onReleased = () => {}, options = {}) {
   const shouldSuppress = options.shouldSuppress || (() => false);
+  const policy = options.policy || null;
+  const operationLock = options.operationLock || null;
   const legacy = createPopupDuplicateGuard(api, { legacyOnly: true });
   const choices = new Map();
   const installations = new Map();
@@ -26,6 +29,15 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}, options =
   const load = async () => (await api.storage.session.get({ [STATE_KEY]: { watch: {}, prompts: {} } }))[STATE_KEY];
   const save = state => api.storage.session.set({ [STATE_KEY]: state });
   const release = id => { Promise.resolve().then(() => onReleased(id)).catch(() => {}); };
+  const duplicateAllowed = url => policy?.isDuplicateAllowed ? policy.isDuplicateAllowed(url) : false;
+  const promptPaused = url => policy?.isPromptPaused ? policy.isPromptPaused(url) : duplicateAllowed(url);
+
+  async function preferences() {
+    try {
+      const stored = await api.storage.local.get({ preferences: DEFAULT_PREFERENCES });
+      return validatePreferences(stored.preferences);
+    } catch { return { ...DEFAULT_PREFERENCES }; }
+  }
 
   async function allowed(url) {
     try { return await api.permissions.contains({ permissions: ['scripting'], origins: [`${new URL(url).origin}/*`] }); }
@@ -45,15 +57,31 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}, options =
     } catch { return false; }
   }
 
-  async function sourceAvailable(record) {
+  async function sourceAvailable(record, allowPending = false) {
     const tab = await getTab(record.source.id);
-    return tab && destination(tab) === record.url && tab.windowId === record.source.windowId
-      && (tab.groupId ?? -1) === record.source.groupId && await eligible(tab) ? tab : null;
+    const stable = current => allowPending
+      ? destination(current) === record.url
+      : current?.url === record.url && !current.pendingUrl && current.status !== 'loading';
+    if (!tab || !stable(tab)
+      || tab.windowId !== record.source.windowId || (tab.groupId ?? -1) !== record.source.groupId
+      || !(await eligible(tab))) return null;
+    // Eligibility checks yield on window/group reads. Finish with a fresh raw
+    // tab snapshot so a same-URL reload cannot hide behind the earlier check.
+    const current = await getTab(record.source.id);
+    return current && stable(current)
+      && current.windowId === record.source.windowId && (current.groupId ?? -1) === record.source.groupId
+      && !current.incognito && !current.pinned && !(Number.isInteger(current.splitViewId) && current.splitViewId >= 0)
+      ? current : null;
   }
 
   async function targetAvailable(id, url) {
     const tab = await getTab(id);
-    return tab?.url === url && (!tab.pendingUrl || tab.pendingUrl === url) && await eligible(tab) ? tab : null;
+    if (tab?.url !== url || tab.pendingUrl || tab.status === 'loading' || !(await eligible(tab))) return null;
+    const current = await getTab(id);
+    return current?.url === url && !current.pendingUrl && current.status !== 'loading'
+      && current.windowId === tab.windowId && (current.groupId ?? -1) === (tab.groupId ?? -1)
+      && !current.incognito && !current.pinned && !(Number.isInteger(current.splitViewId) && current.splitViewId >= 0)
+      ? current : null;
   }
 
   async function dedupRules() {
@@ -65,7 +93,7 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}, options =
     const key = canonicalUrl(url, rules);
     const result = [];
     for (const tab of await api.tabs.query({ windowType: 'normal' })) {
-      if (tab.id === sourceId || canonicalUrl(tab.url, rules) !== key || (tab.pendingUrl && tab.pendingUrl !== tab.url)
+      if (tab.id === sourceId || canonicalUrl(tab.url, rules) !== key || tab.pendingUrl || tab.status === 'loading'
         || state.watch[tab.id]?.stage === 'prompt') continue;
       if (await eligible(tab)) result.push(tab);
     }
@@ -106,7 +134,7 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}, options =
     if (!record || record.phase !== 'installing' || record.installationId !== installationId) return;
     const result = results?.find(item => item.frameId === 0);
     if (error || !result?.documentId || result.result?.url !== record.url
-      || !(await sourceAvailable(record)) || !(await allowed(record.url))) {
+      || !(await sourceAvailable(record)) || !(await allowed(record.url)) || await promptPaused(record.url)) {
       await dismiss(state, token);
       release(record.source.id);
       return;
@@ -122,7 +150,8 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}, options =
     try {
       if (!(await sourceAvailable(record))) throw Error('Source changed');
       const response = await api.tabs.sendMessage(record.source.id, { type: 'INLINE_DUPLICATE_SHOW', token,
-        url: record.url, title: record.title, count: record.count }, { documentId: record.documentId });
+        url: record.url, title: record.title, count: record.count, preferences: await preferences() },
+      { documentId: record.documentId });
       if (response?.shown !== true) throw Error('Overlay unavailable');
     } catch {
       await dismiss(state, token);
@@ -154,7 +183,8 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}, options =
       delete state.watch[id];
       await save(state);
       const { settings = DEFAULT_SETTINGS } = await api.storage.local.get({ settings: DEFAULT_SETTINGS });
-      if (!validateSettings(settings).duplicatePromptEnabled || !(await eligible(tab)) || !(await allowed(url))) return false;
+      if (!validateSettings(settings).duplicatePromptEnabled || !(await eligible(tab)) || !(await allowed(url))
+        || await promptPaused(url)) return false;
       const targets = await matches(url, id, state, await dedupRules());
       if (!targets.length) return false;
       const token = `inline-${crypto.randomUUID()}`;
@@ -167,8 +197,11 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}, options =
     const token = state.watch[id]?.token;
     const record = state.prompts[token];
     if (!record) return false;
-    const source = await sourceAvailable(record);
-    if (!source || !(await allowed(record.url))) { await dismiss(state, token); return false; }
+    const source = await sourceAvailable(record, record.phase === 'waiting' && !record.documentId);
+    if (!source || !(await allowed(record.url)) || await promptPaused(record.url)) {
+      await dismiss(state, token);
+      return false;
+    }
     if (record.phase === 'installing' && !installations.has(token)) {
       if (record.attempts >= 2) { await dismiss(state, token); return false; }
       record.phase = 'waiting';
@@ -215,17 +248,31 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}, options =
       || (sender.documentLifecycle && sender.documentLifecycle !== 'active')) throw Error('这个页内提醒已失效。');
   }
 
-  async function context(message, sender) {
+  async function context(message, sender, requirePrompt = true) {
     authenticate(message, sender);
     const state = await load();
     const record = state.prompts[message.token];
     if (!record || record.source.id !== sender.tab.id || record.documentId !== sender.documentId
       || record.url !== sender.url || !(await sourceAvailable(record))) throw Error('网页已经变化，未操作其他标签。');
-    const { settings = DEFAULT_SETTINGS } = await api.storage.local.get({ settings: DEFAULT_SETTINGS });
-    if (!validateSettings(settings).duplicatePromptEnabled || !(await allowed(record.url))) {
-      throw Error('页内提醒已关闭或权限已撤销，请保留新标签。');
+    if (requirePrompt) {
+      const { settings = DEFAULT_SETTINGS } = await api.storage.local.get({ settings: DEFAULT_SETTINGS });
+      if (!validateSettings(settings).duplicatePromptEnabled || !(await allowed(record.url))
+        || await promptPaused(record.url)) {
+        throw Error('页内提醒已关闭、已暂停或权限已撤销，请保留新标签。');
+      }
     }
     return { state, record };
+  }
+
+  async function promptStillEnabled(record, expectedTargetUrl) {
+    try {
+      const { settings = DEFAULT_SETTINGS } = await api.storage.local.get({ settings: DEFAULT_SETTINGS });
+      if (!validateSettings(settings).duplicatePromptEnabled || !(await allowed(record.url))
+        || await promptPaused(record.url)) return false;
+      const rules = await dedupRules();
+      const sourceKey = canonicalUrl(record.url, rules);
+      return sourceKey !== null && sourceKey === canonicalUrl(expectedTargetUrl, rules);
+    } catch { return false; }
   }
 
   async function chooseOnce(message, sender) {
@@ -248,8 +295,13 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}, options =
       await api.windows.update(focused.windowId, { focused: true });
       record.phase = 'closing';
       await save(state);
-      if (!(await targetAvailable(existing.id, expectedTargetUrl)) || !(await sourceAvailable(record))
-        || !(await ping(record, token))) throw Error('网页已经变化，已保留新标签。');
+      if (!(await promptStillEnabled(record, expectedTargetUrl))
+        || !(await targetAvailable(existing.id, expectedTargetUrl))
+        || !(await ping(record, token))) throw Error('网页、提醒策略或权限已经变化，已保留新标签。');
+      // This is deliberately the final awaited check before remove. It includes
+      // a fresh raw snapshot after window/group checks and rejects reloads even
+      // when pendingUrl equals the committed URL.
+      if (!(await sourceAvailable(record))) throw Error('网页已经变化，已保留新标签。');
       const removal = api.tabs.remove(record.source.id).then(() => null, error => error);
       return { removal, token, sourceId: record.source.id };
     } catch (error) {
@@ -278,16 +330,26 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}, options =
   const chooseInline = (message, sender) => {
     try {
       authenticate(message, sender);
-      if (!['switch', 'keep'].includes(message.choice)) throw Error('选择无效。');
+      if (!['switch', 'keep', 'pause-site'].includes(message.choice)) throw Error('选择无效。');
     } catch (error) { return Promise.reject(error); }
     if (message.choice === 'keep') return enqueue(async () => {
-      const { state, record } = await context(message, sender);
+      const { state, record } = await context(message, sender, false);
       await dismiss(state, message.token);
       return { action: 'kept', releasedId: record.source.id };
     });
+    if (message.choice === 'pause-site') return enqueue(async () => {
+      if (!policy?.pauseSite) throw Error('暂停策略暂不可用。');
+      const { state, record } = await context(message, sender, false);
+      const origin = new URL(record.url).origin;
+      await policy.pauseSite(origin);
+      await dismiss(state, message.token);
+      return { action: 'paused', origin, releasedId: record.source.id };
+    });
     const key = `${message.token}:${sender.documentId}`;
     if (choices.has(key)) return choices.get(key);
-    const task = enqueue(() => chooseOnce(message, sender)).then(result => result.removal ? finishRemoval(result) : result);
+    const execute = () => enqueue(() => chooseOnce(message, sender))
+      .then(result => result.removal ? finishRemoval(result) : result);
+    const task = operationLock ? operationLock.run('inline-duplicate', execute) : execute();
     choices.set(key, task);
     const clear = () => { if (choices.get(key) === task) choices.delete(key); };
     task.then(clear, clear);

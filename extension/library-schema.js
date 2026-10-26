@@ -1,10 +1,13 @@
 import { validateSettings } from './rules.js';
 import { normalizeDedupRules, safeHttpUrl } from './url-identity.js';
+import { DEFAULT_PREFERENCES, validatePreferences } from './preferences.js';
+import { normalizeDuplicateAllowlist } from './duplicate-policy.js';
 
 export const SCHEMA_VERSION = 1;
 export const DEFAULT_LIBRARY = Object.freeze({ schemaVersion: 1, revision: 0,
   favorites: Object.freeze([null, null, null]), dedupRules: Object.freeze([]), workspaces: Object.freeze([]) });
-const LIMITS = { backupBytes: 1024 * 1024, reading: 2000, workspaces: 100, workspaceTabs: 5000, title: 300, name: 80 };
+const LIMITS = { backupBytes: 1024 * 1024, reading: 2000, workspaces: 100, workspaceTabs: 5000, title: 300, name: 80,
+  historyPerWorkspace: 5, autoSnapshots: 5, duplicateAllowlist: 100 };
 const exactKeys = (value, allowed, message) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)
     || Object.keys(value).some(key => !allowed.includes(key))) throw Error(message);
@@ -61,7 +64,7 @@ function validateGroup(raw) {
     color: raw.color, collapsed: raw.collapsed };
 }
 
-function validateWorkspace(raw) {
+export function validateWorkspace(raw) {
   exactKeys(raw, ['id', 'name', 'savedAt', 'windows'], '工作区包含未知字段。');
   if (!Number.isFinite(raw.savedAt) || !Array.isArray(raw.windows) || raw.windows.length > 50) throw Error('工作区格式无效。');
   let count = 0;
@@ -79,6 +82,57 @@ function validateWorkspace(raw) {
   });
   if (count > LIMITS.workspaceTabs) throw Error('工作区标签总数超过限制。');
   return { id: validId(raw.id), name: text(raw.name, LIMITS.name, '工作区名称无效。'), savedAt: raw.savedAt, windows };
+}
+
+export const validateDuplicateAllowlist = normalizeDuplicateAllowlist;
+
+export function validateWorkspaceHistory(raw = { schemaVersion: 1, byWorkspace: {} }) {
+  exactKeys(raw, ['schemaVersion', 'byWorkspace'], '工作区历史包含未知字段。');
+  if (raw.schemaVersion !== 1 || !raw.byWorkspace || typeof raw.byWorkspace !== 'object' || Array.isArray(raw.byWorkspace)) {
+    throw Error('工作区历史格式无效。');
+  }
+  const byWorkspace = {};
+  for (const [workspaceId, entries] of Object.entries(raw.byWorkspace)) {
+    if (validId(workspaceId) !== workspaceId || ['__proto__', 'prototype', 'constructor'].includes(workspaceId)) {
+      throw Error('工作区历史 ID 格式无效。');
+    }
+    if (!Array.isArray(entries) || entries.length > LIMITS.historyPerWorkspace) throw Error('工作区历史版本超过限制。');
+    const ids = new Set();
+    byWorkspace[workspaceId] = entries.map(entry => {
+      exactKeys(entry, ['versionId', 'archivedAt', 'workspace'], '工作区历史版本包含未知字段。');
+      const versionId = validId(entry.versionId);
+      if (ids.has(versionId) || !Number.isFinite(entry.archivedAt)) throw Error('工作区历史版本格式无效。');
+      const workspace = validateWorkspace(entry.workspace);
+      if (workspace.id !== workspaceId) throw Error('工作区历史版本与工作区不匹配。');
+      ids.add(versionId);
+      return { versionId, archivedAt: entry.archivedAt, workspace };
+    });
+  }
+  return { schemaVersion: 1, byWorkspace };
+}
+
+export const DEFAULT_SNAPSHOT_CONFIG = Object.freeze({ enabled: false, intervalMinutes: 30, retention: 5 });
+export function validateSnapshotConfig(raw = DEFAULT_SNAPSHOT_CONFIG) {
+  exactKeys(raw, ['enabled', 'intervalMinutes', 'retention'], '自动快照设置包含未知字段。');
+  const retention = raw.retention ?? 5;
+  if (typeof raw.enabled !== 'boolean' || ![15, 30, 60].includes(raw.intervalMinutes)
+    || !Number.isInteger(retention) || retention < 1 || retention > 5) throw Error('自动快照设置无效。');
+  return { enabled: raw.enabled, intervalMinutes: raw.intervalMinutes, retention };
+}
+
+export function validateAutoSnapshots(raw = []) {
+  if (!Array.isArray(raw) || raw.length > LIMITS.autoSnapshots) throw Error('自动快照数量超过限制。');
+  const ids = new Set();
+  return raw.map(item => {
+    exactKeys(item, ['snapshotId', 'capturedAt', 'libraryRevision', 'digest', 'workspaces'], '自动快照包含未知字段。');
+    const snapshotId = validId(item.snapshotId);
+    if (ids.has(snapshotId) || !Number.isFinite(item.capturedAt)
+      || !Number.isInteger(item.libraryRevision) || item.libraryRevision < 0
+      || typeof item.digest !== 'string' || !item.digest) throw Error('自动快照格式无效。');
+    ids.add(snapshotId);
+    return { snapshotId, capturedAt: item.capturedAt, libraryRevision: item.libraryRevision,
+      digest: item.digest, workspaces: validateWorkspaces(item.workspaces) };
+  });
 }
 
 export function validateWorkspaces(raw) {
@@ -99,16 +153,21 @@ export function validateBackup(raw) {
   let size;
   try { size = new TextEncoder().encode(JSON.stringify(raw)).length; } catch { throw Error('备份不是有效数据。'); }
   if (size > LIMITS.backupBytes) throw Error('备份超过 1 MB 限制。');
-  exactKeys(raw, ['schemaVersion', 'exportedAt', 'settings', 'readingList', 'favorites', 'dedupRules', 'workspaces'], '备份包含未知字段。');
-  if (raw.schemaVersion !== 1 || !Number.isFinite(raw.exportedAt)) throw Error('备份版本无效。');
+  exactKeys(raw, ['schemaVersion', 'exportedAt', 'settings', 'readingList', 'favorites', 'dedupRules', 'workspaces',
+    'preferences', 'duplicateAllowlist'], '备份包含未知字段。');
+  if (![1, 2].includes(raw.schemaVersion) || !Number.isFinite(raw.exportedAt)) throw Error('备份版本无效。');
   exactKeys(raw.settings, ['enabled', 'duplicatePromptEnabled', 'rules'], '设置包含未知字段。');
   if (!Array.isArray(raw.settings.rules) || raw.settings.rules.length > 500) throw Error('自动分组规则数量超过限制。');
   for (const rule of raw.settings.rules) {
-    exactKeys(rule, ['prefix', 'group', 'color', 'enabled'], '自动分组规则包含未知字段。');
+    exactKeys(rule, ['prefix', 'group', 'color', 'enabled', 'excludePaths'], '自动分组规则包含未知字段。');
     if (typeof rule.prefix !== 'string' || rule.prefix.length > 8192
       || typeof rule.group !== 'string' || rule.group.length > 80) throw Error('自动分组规则字符串超过限制。');
   }
-  return { schemaVersion: 1, exportedAt: raw.exportedAt, settings: validateSettings(raw.settings),
+  const preferences = raw.preferences === undefined ? undefined : validatePreferences(raw.preferences ?? DEFAULT_PREFERENCES);
+  const duplicateAllowlist = raw.duplicateAllowlist === undefined ? undefined : validateDuplicateAllowlist(raw.duplicateAllowlist);
+  return { schemaVersion: raw.schemaVersion, exportedAt: raw.exportedAt, settings: validateSettings(raw.settings),
     readingList: validateStoredReading(raw.readingList), favorites: validateFavorites(raw.favorites),
-    dedupRules: normalizeDedupRules(raw.dedupRules), workspaces: validateWorkspaces(raw.workspaces) };
+    dedupRules: normalizeDedupRules(raw.dedupRules), workspaces: validateWorkspaces(raw.workspaces),
+    ...(preferences === undefined ? {} : { preferences }),
+    ...(duplicateAllowlist === undefined ? {} : { duplicateAllowlist }) };
 }

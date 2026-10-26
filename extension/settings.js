@@ -4,9 +4,11 @@ import {
   DEFAULT_SETTINGS,
   validateSettings,
   findRule,
+  explainRule,
 } from './rules.js';
 
 const STORAGE_KEY = 'settings';
+const RULE_REASONS = { matched: '符合规则', excluded: '命中排除路径', 'no-match': '没有匹配规则', 'invalid-url': '不是可整理的网页', disabled: '自动分组已关闭', ineligible: '固定、无痕或分屏页面', paused: '本标签已暂停整理', 'protected-group': '标签组受保护', 'shared-target': '目标组为共享组' };
 const EXAMPLE_RULES = [
   { prefix: 'https://mail.google.com/', group: '邮件', color: 'blue', enabled: true },
   { prefix: 'https://github.com/', group: '开发', color: 'purple', enabled: true },
@@ -67,7 +69,7 @@ function setStatus(message, kind = 'info') {
 
 function setSaving(isSaving) {
   saving = isSaving;
-  const controls = form.querySelectorAll('button, input, select');
+  const controls = form.querySelectorAll('button, input, select, textarea');
   controls.forEach((control) => {
     control.disabled = isSaving;
   });
@@ -166,6 +168,11 @@ function createRuleCard(rule = { prefix: '', group: '', color: COLORS[0], enable
   groupInput.value = rule.group ?? '';
   colorSelect.value = COLORS.includes(rule.color) ? rule.color : COLORS[0];
   ruleEnabledInput.checked = rule.enabled !== false;
+  const exclusions = document.createElement('label'); exclusions.className = 'field exclusion-field';
+  const caption = document.createElement('span'); caption.textContent = '排除路径（可选，每行一个，以 / 开头）';
+  const paths = document.createElement('textarea'); paths.className = 'rule-exclusions'; paths.rows = 2;
+  paths.placeholder = '/login\n/settings'; paths.value = (rule.excludePaths || []).join('\n');
+  exclusions.append(caption, paths); card.append(exclusions);
   updateColorDot(colorSelect);
 
   colorSelect.addEventListener('change', () => updateColorDot(colorSelect));
@@ -204,6 +211,7 @@ function readFormSettings() {
     group: card.querySelector('.rule-group').value,
     color: card.querySelector('.rule-color').value,
     enabled: card.querySelector('.rule-enabled').checked,
+    excludePaths: card.querySelector('.rule-exclusions').value.split(/\n/).map(path => path.trim()).filter(Boolean),
   }));
 
   return {
@@ -229,9 +237,10 @@ function updatePreview() {
       return;
     }
 
-    const rule = findRule(url, settings.rules);
+    const explanation = explainRule(url, settings.rules);
+    const rule = explanation.rule;
     if (!rule) {
-      previewResult.textContent = '没有匹配规则，标签页会保持原状';
+      previewResult.textContent = `${RULE_REASONS[explanation.reason] || '没有匹配规则'}，标签页会保持原状`;
       return;
     }
 
@@ -453,3 +462,61 @@ chrome.permissions?.onRemoved?.addListener(refreshInlinePermissionStatus);
 
 loadSettings();
 refreshInlinePermissionStatus();
+
+let sourceTabs = [];
+async function loadRuleSources() {
+  try {
+    sourceTabs = (await chrome.tabs.query({ windowType: 'normal' })).filter(tab => !tab.incognito && /^https?:\/\//.test(tab.url || ''))
+      .sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+    const select = document.querySelector('#rule-source'); select.replaceChildren();
+    const requested = Number(new URL(location.href).searchParams.get('tab'));
+    for (const tab of sourceTabs) { const option = document.createElement('option'); option.value = String(tab.id); option.textContent = `窗口 ${tab.windowId} · ${tab.title || tab.url}`; select.append(option); }
+    if (sourceTabs.some(tab => tab.id === requested)) select.value = String(requested);
+    const selected = sourceTabs.find(tab => tab.id === Number(select.value));
+    if (selected) document.querySelector('#assistant-url').value = selected.url;
+  } catch (error) { setStatus(error.message, 'error'); }
+}
+document.querySelector('#rule-source').addEventListener('change', event => {
+  const tab = sourceTabs.find(tab => tab.id === Number(event.target.value));
+  if (tab) document.querySelector('#assistant-url').value = tab.url;
+});
+document.querySelector('#create-rule-from-page').addEventListener('click', () => {
+  try {
+    const url = new URL(document.querySelector('#assistant-url').value.trim());
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw Error('请输入有效的 HTTP(S) 网页网址。');
+    const path = url.pathname.slice(0, url.pathname.lastIndexOf('/') + 1);
+    const prefix = document.querySelector('#assistant-mode').value === 'site' ? `${url.origin}/` : `${url.origin}${path || '/'}`;
+    const name = document.querySelector('#assistant-group').value.trim(); if (!name) throw Error('请填写标签组名称。');
+    const existing = readFormSettings().rules.find(rule => rule.group.trim() === name);
+    const card = createRuleCard({ prefix, group: name, color: existing?.color || 'blue', enabled: true, excludePaths: [] });
+    markDirty(); updatePreview(); card.querySelector('.rule-prefix').focus(); setStatus('规则已加入草稿，保存后生效。');
+  } catch (error) { setStatus(error.message, 'error'); }
+});
+document.querySelector('#preview-rules-impact').addEventListener('click', async event => {
+  const button = event.currentTarget; button.disabled = true;
+  try {
+    const selected = sourceTabs.find(tab => tab.id === Number(document.querySelector('#rule-source').value));
+    const windowId = selected?.windowId ?? (await chrome.windows.getCurrent()).id;
+    const current = validateSettings(readFormSettings());
+    const result = await chrome.runtime.sendMessage({ type: 'RULES_PREVIEW', windowId, rules: current.rules });
+    if (!result?.ok) throw Error(result?.error || '试跑失败');
+    const box = document.querySelector('#rules-impact'); box.replaceChildren();
+    const summary = document.createElement('p'); summary.textContent = `${current.enabled ? '' : '自动分组已关闭，以下为启用后的预计结果。'}窗口 ${windowId}：命中 ${result.matched}，排除 ${result.excluded}，跳过 ${result.skipped}。试跑不会移动标签。`; box.append(summary);
+    const list = document.createElement('ul');
+    for (const item of (result.results || []).slice(0, 200)) { const li = document.createElement('li'); li.textContent = `${item.title || item.url} → ${item.targetGroup || item.group || '保持原状'}：${RULE_REASONS[item.reason] || '保持原状'}`; list.append(li); } box.append(list);
+  } catch (error) { setStatus(error.message, 'error'); }
+  finally { button.disabled = false; }
+});
+for (const [id, paused] of [['pause-selected-tab', true], ['resume-selected-tab', false]]) document.querySelector(`#${id}`).addEventListener('click', async () => {
+  try {
+    const tabId = Number(document.querySelector('#rule-source').value); if (!sourceTabs.some(tab => tab.id === tabId)) throw Error('请先选择网页。');
+    const response = await chrome.runtime.sendMessage({ type: 'GROUPING_PAUSE_TAB', tabId, paused });
+    if (!response?.ok) throw Error(response?.error || '设置失败');
+    setStatus(paused ? '已暂停此标签的自动分组，直到关闭标签或结束浏览器会话。' : '已恢复此标签的自动分组。', 'success');
+  } catch (error) { setStatus(error.message, 'error'); }
+});
+void loadRuleSources();
+window.addEventListener('beforeunload', event => {
+  if (!dirty) return;
+  event.preventDefault(); event.returnValue = '';
+});

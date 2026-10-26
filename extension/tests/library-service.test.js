@@ -5,8 +5,11 @@ import { createOperationLock } from '../operation-lock.js';
 
 function fixture(library) {
   const state = { library: structuredClone(library), tabs: new Map(), windows: new Map([[1, { id: 1, type: 'normal' }], [2, { id: 2, type: 'normal' }]]),
-    groups: new Map(), calls: [], nextTab: 20, nextWindow: 10, nextGroup: 30 };
-  const api = { runtime: { getManifest: () => ({ version: '1.6.0' }) }, tabs: {
+    groups: new Map(), calls: [], nextTab: 20, nextWindow: 10, nextGroup: 30, session: {}, autoSnapshots: [] };
+  const area = data => ({ async get(defaults) { return structuredClone({ ...(defaults || {}), ...data }); },
+    async set(values) { Object.assign(data, structuredClone(values)); }, async remove(key) { delete data[key]; } });
+  const api = { runtime: { getManifest: () => ({ version: '1.6.0' }) },
+    storage: { local: area(state), session: area(state.session) }, tabs: {
     async query(options = {}) { return structuredClone([...state.tabs.values()].filter(tab =>
       (options.windowId === undefined || tab.windowId === options.windowId)
       && (!options.windowType || state.windows.get(tab.windowId)?.type === options.windowType))); },
@@ -38,7 +41,18 @@ function fixture(library) {
   } };
   const store = { async getLibrary() { return structuredClone(state.library); }, async updateLibrary(change) {
     state.library = await change(structuredClone(state.library)); state.library.revision += 1; return state.library;
-  } };
+  }, async updateWorkspace(id, baseRevision, workspace) {
+    if (baseRevision !== state.library.revision) throw Error('重新读取');
+    const index = state.library.workspaces.findIndex(item => item.id === id);
+    if (index < 0) throw Error('不存在');
+    const old = structuredClone(state.library.workspaces[index]);
+    state.library.workspaces[index] = structuredClone(workspace);
+    state.library.revision += 1;
+    if (!state.history) state.history = {};
+    const historyEntry = { versionId: `v${state.library.revision}`, archivedAt: 1, workspace: old };
+    state.history[id] = [historyEntry, ...(state.history[id] || [])].slice(0, 5);
+    return { library: structuredClone(state.library), historyEntry };
+  }, async getWorkspaceHistory(id) { return structuredClone(state.history?.[id] || []); } };
   const undo = { async getUndo() { return { items: [] }; } };
   const suppression = { async plan(url) { state.calls.push(['plan', url]); return `token-${state.calls.length}`; },
     async claim(id, _blank, token) {
@@ -216,4 +230,70 @@ test('同组标签逐个入组，检查后续标签期间前页变化不会被�
   assert.equal(first.groupId, -1);
   assert.ok([...state.tabs.values()].find(tab => tab.url === 'https://b.test/').groupId >= 0);
   assert.deepEqual(state.calls.filter(call => call[0] === 'group').map(call => call[1].tabIds.length), [1, 1]);
+});
+
+test('更新工作区要求baseRevision并归档旧版，历史预览确认后只打开缺失页', async () => {
+  const library = { ...empty(), workspaces: [{ id: 'w', name: '旧版', savedAt: 1, windows: [{ tabs: [
+    { url: 'https://old.test/path?q=1#full', title: '旧页', pinned: false, index: 0, group: null },
+  ] }] }] };
+  const { state, service } = fixture(library);
+  state.tabs.set(1, { id: 1, windowId: 1, groupId: -1, index: 0, url: 'https://new.test/', title: '新页', pinned: false });
+  await assert.rejects(service.updateWorkspace({ id: 'w', baseRevision: 9, name: '新版', scope: 'current', windowId: 1 }), /重新读取/);
+  const updated = await service.updateWorkspace({ id: 'w', baseRevision: 0, name: '新版', scope: 'current', windowId: 1 });
+  assert.equal(updated.revision, 1);
+  assert.equal(state.library.workspaces[0].windows[0].tabs[0].url, 'https://new.test/');
+  const history = await service.getWorkspaceHistory('w');
+  assert.equal(history[0].workspace.windows[0].tabs[0].url, 'https://old.test/path?q=1#full');
+
+  const preview = await service.previewRestore({ id: 'w', versionId: history[0].versionId, source: 'history' });
+  assert.equal(preview.restore.missing, 1);
+  assert.deepEqual(preview.diff.added.map(item => item.url), ['https://old.test/path?q=1#full']);
+  const restored = await service.restorePreview(preview.token);
+  assert.equal(restored.restored, 1);
+  assert.equal([...state.tabs.values()].some(tab => tab.url === 'https://new.test/'), true);
+  assert.equal([...state.tabs.values()].some(tab => tab.url === 'https://old.test/path?q=1#full'), true);
+  assert.equal(state.library.workspaces[0].name, '新版');
+});
+
+test('历史恢复令牌绑定版本内容，版本变化后拒绝执行', async () => {
+  const old = { id: 'w', name: '旧版', savedAt: 1, windows: [{ tabs: [
+    { url: 'https://old.test/', title: '旧页', pinned: false, index: 0, group: null },
+  ] }] };
+  const library = { ...empty(), workspaces: [{ ...old, name: '当前' }] };
+  const { state, service } = fixture(library);
+  state.history = { w: [{ versionId: 'v1', archivedAt: 2, workspace: structuredClone(old) }] };
+  const preview = await service.previewRestore({ id: 'w', versionId: 'v1', source: 'history' });
+  state.history.w[0].workspace.windows[0].tabs[0].url = 'https://changed.test/';
+  await assert.rejects(service.restorePreview(preview.token), /已变化/);
+  assert.equal(state.calls.some(call => call[0] === 'window'), false);
+});
+
+test('自动快照使用versionId选择其中工作区，恢复不覆盖当前保存版本', async () => {
+  const current = { id: 'w', name: '当前', savedAt: 2, windows: [{ tabs: [
+    { url: 'https://current.test/', title: '当前', pinned: false, index: 0, group: null },
+  ] }] };
+  const archived = { id: 'w', name: '快照', savedAt: 1, windows: [{ tabs: [
+    { url: 'https://snapshot.test/', title: '快照', pinned: false, index: 0, group: null },
+  ] }] };
+  const { state, service } = fixture({ ...empty(), workspaces: [current] });
+  state.autoSnapshots = [{ snapshotId: 'snapshot-1', capturedAt: 3, libraryRevision: 0, digest: 'digest', workspaces: [archived] }];
+  const preview = await service.previewRestore({ id: 'w', versionId: 'snapshot-1', source: 'auto' });
+  assert.deepEqual(preview.restore.missingUrls, ['https://snapshot.test/']);
+  await service.restorePreview(preview.token);
+  assert.equal(state.library.workspaces[0].name, '当前');
+  assert.equal([...state.tabs.values()].some(tab => tab.url === 'https://snapshot.test/'), true);
+});
+
+test('自动快照捕获助手读取当前普通窗口并跳过共享页面，不修改空library', async () => {
+  const { state, service } = fixture(empty());
+  state.tabs.set(1, { id: 1, windowId: 1, groupId: -1, index: 0, url: 'https://live.test/', title: '实时', pinned: false });
+  state.tabs.set(2, { id: 2, windowId: 1, groupId: 8, index: 1, url: 'https://shared.test/', title: '共享', pinned: false });
+  state.groups.set(8, { id: 8, windowId: 1, shared: true });
+  const captured = await service.captureCurrentWorkspace();
+  assert.equal(captured.saved, 1);
+  assert.equal(captured.skipped, 1);
+  assert.equal(captured.workspace.id, 'current-browser');
+  assert.equal(captured.workspace.savedAt, 0);
+  assert.deepEqual(captured.workspace.windows[0].tabs.map(item => item.url), ['https://live.test/']);
+  assert.deepEqual(state.library.workspaces, []);
 });

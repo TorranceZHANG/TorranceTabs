@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 const URL = 'https://example.com/docs';
 const event = () => {
   const listeners = [];
-  return { addListener(fn) { listeners.push(fn); }, emit(...args) { for (const fn of listeners) fn(...args); } };
+  return { addListener(fn) { listeners.push(fn); }, emit(...args) { for (const fn of listeners) fn(...args); }, listeners };
 };
 const gate = () => {
   let resolve;
@@ -88,6 +88,23 @@ async function fixture(t) {
   await import(`../background.js?integration=${++sequence}`);
   return { state, api };
 }
+
+test('新增扩展消息返回明确字段，网页不能直接改策略或搜索标签', async t => {
+  const { api } = await fixture(t);
+  const message = (input, sender = { id: api.runtime.id, url: api.runtime.getURL('tools.html') }) => new Promise(resolve => {
+    api.runtime.onMessage.listeners[0](input, sender, resolve);
+  });
+  const allowlist = await message({ type: 'DUPLICATE_ALLOWLIST_SAVE', origins: ['https://example.com'] });
+  assert.deepEqual(allowlist, { ok: true, allowlist: ['https://example.com'] });
+  const paused = await message({ type: 'GROUPING_PAUSE_TAB', tabId: 1, paused: true });
+  assert.deepEqual(paused, { ok: true, tabId: 1, paused: true });
+  const result = await message({ type: 'SEARCH_QUERY', query: 'example', source: 'tab' });
+  assert.equal(result.ok, true); assert.equal(result.entries.length, 1);
+  for (const type of ['SEARCH_QUERY', 'DUPLICATE_ALLOWLIST_SAVE', 'SNAPSHOT_CAPTURE', 'SYNC_UPLOAD']) {
+    const denied = await message({ type }, { id: api.runtime.id, url: URL, tab: { id: 1 } });
+    assert.equal(denied.ok, false); assert.match(denied.error, /扩展页面/);
+  }
+});
 
 test('旧创建事件延迟返回blank后，不能覆盖较新重复事件的分组抑制', async t => {
   const { state, api } = await fixture(t);

@@ -7,6 +7,8 @@
     <title>TorranceTabs 工具箱</title>
     <link rel="stylesheet" href="ui.css">
     <link rel="stylesheet" href="tools.css">
+    <link rel="stylesheet" href="appearance.css">
+    <script type="module" src="appearance.js"></script>
   </head>
   <body>
     <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -28,10 +30,10 @@
           <a href="#workspaces">项目工作区</a>
           <a href="#recovery">清理撤销</a>
           <a href="#backup">备份与迁移</a>
-          <a href="#updates">版本更新</a>
+          <a href="#snapshots">自动快照</a><a href="#sync">按需同步</a><a href="#updates">版本更新</a>
         </nav>
         <div class="app-sidebar-foot">
-          <span>数据仅保存在本机</span>
+          <span>默认本机保存，可按需同步</span>
           <span id="version">—</span>
         </div>
       </aside>
@@ -70,7 +72,7 @@
             <div class="section-heading">
               <div class="section-title-row">
                 <div>
-                  <h2 id="matching-title">按网站设置去重</h2>
+                  <h2 id="matching-title">按网站设置去重</h2><a href="cleanup.html">查看重复项与例外名单</a>
                   <p>默认比较完整网址，只忽略明确指定的参数。</p>
                 </div>
               </div>
@@ -155,7 +157,14 @@
             </div>
           </section>
 
-          <section id="updates" class="tool-section" aria-labelledby="updates-title">
+          <section id="snapshots" class="tool-section wide" aria-labelledby="snapshots-title"><h2 id="snapshots-title">自动快照</h2><p class="small muted">保存当前全部普通窗口，内容未变化时不重复保存。共享、无痕、分屏和内部页面跳过。</p>
+<div class="feature-fields"><label class="check-label"><input id="snapshots-enabled" type="checkbox">启用定时快照</label><label>保存间隔<select id="snapshot-interval"><option value="15">15 分钟</option><option value="30">30 分钟</option><option value="60">60 分钟</option></select></label><label>保留份数<select id="snapshot-retention"><option>1</option><option>2</option><option>3</option><option>4</option><option selected>5</option></select></label></div>
+<div class="actions"><button id="save-snapshot-config" type="button">保存快照设置</button><button id="capture-snapshot" type="button">立即保存快照</button></div><div id="snapshot-list" class="list"></div><p class="small muted">历史和快照仅存本机，有总容量上限；快照保存链接和布局，无法恢复表单或页面运行状态。</p></section>
+<section id="sync" class="tool-section wide" aria-labelledby="sync-title"><h2 id="sync-title">按需跨机器同步</h2><p class="small muted">通过 Chrome 同步存储传递所选设置。需要相同扩展身份与已启用同步的 Chrome 账号；各设备分别上传，应用前先预览。</p>
+<label class="check-label"><input id="sync-enabled" type="checkbox">启用按需同步</label><p id="sync-state" class="small muted" role="status">同步未启用</p>
+<fieldset class="sync-sections"><legend>参与本次操作的内容</legend><label class="check-label"><input name="sync-section" type="checkbox" value="preferences" checked>外观偏好</label><label class="check-label"><input name="sync-section" type="checkbox" value="rules">分组规则（含网址）</label><label class="check-label"><input name="sync-section" type="checkbox" value="favorites">常用入口（含网址）</label></fieldset>
+<div class="actions"><button id="sync-upload" type="button" disabled>上传所选设置</button></div><label class="field">读取设备<select id="sync-device" disabled></select></label><div class="actions"><button id="sync-refresh" type="button">刷新设备列表</button><button id="sync-preview" type="button" disabled>预览远端设置</button><button id="sync-apply" class="primary" type="button" disabled>确认应用</button></div><div id="sync-preview-result" class="preview"></div><p id="sync-result" role="status" aria-live="polite"></p><p class="small muted">每台设备最多上传 7 KiB，最多 8 台。稍后读、工作区、历史、自动快照和临时暂停不参与同步；关闭同步会保留云端已有副本。</p></section><p id="enhancement-status" class="notice wide" role="status" aria-live="polite" hidden></p>
+<section id="updates" class="tool-section" aria-labelledby="updates-title">
             <div class="section-title-row">
               <div>
                 <h2 id="updates-title">版本更新</h2>

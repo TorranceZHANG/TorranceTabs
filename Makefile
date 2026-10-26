@@ -10,6 +10,7 @@ test-installer:
 
 package:
 	python3 scripts/package_release.py --version $$(cat VERSION)
+	python3 scripts/package_store.py
 
 check:
 	python3 -m compileall -q scripts tests

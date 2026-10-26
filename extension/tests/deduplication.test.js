@@ -10,9 +10,13 @@ function fixture(tabs, groups = []) {
     }])),
     groups: new Map(groups.map(group => [group.id, { windowId: 1, shared: false, ...group }])),
     windows: new Map([[1, { id: 1, type: 'normal' }], [2, { id: 2, type: 'normal' }], [3, { id: 3, type: 'popup' }]]),
-    removed: [], focusedWindow: 1, queryCalls: 0,
+    removed: [], focusedWindow: 1, queryCalls: 0, session: {},
   };
   const api = {
+    storage: { session: {
+      async get(defaults) { return structuredClone({ ...defaults, ...state.session }); },
+      async set(values) { Object.assign(state.session, structuredClone(values)); },
+    } },
     tabs: {
       async query(options = {}) {
         state.queryCalls += 1;
@@ -252,4 +256,98 @@ test('journal后等待keeper或焦点期间候选导航，最终candidate复核�
   assert.equal(result.closed, 0);
   assert.equal(state.removed.length, 0);
   assert.equal(state.tabs.get(2).url, 'https://user.test/');
+});
+
+test('预览返回固定候选，执行只处理显式选择且token一次性', async () => {
+  const { state, api } = fixture([
+    { id: 1, title: 'A1', url: 'https://a.test/' }, { id: 2, title: 'A2', url: 'https://a.test/' },
+    { id: 3, title: 'B1', url: 'https://b.test/' }, { id: 4, title: 'B2', url: 'https://b.test/' },
+  ]);
+  const deduplicate = createDeduplicator(api);
+  const preview = await deduplicate.preview({ scope: 'all' });
+  assert.equal(preview.buckets.length, 2);
+  assert.deepEqual(preview.summary, { buckets: 2, duplicates: 2, scope: 'all' });
+  assert.deepEqual(Object.keys(preview.buckets[0].tabs[0]).sort(),
+    ['active', 'audible', 'groupId', 'id', 'lastAccessed', 'pinned', 'title', 'url', 'windowId'].sort());
+  const bucket = preview.buckets.find(item => item.url === 'https://a.test/');
+  const result = await deduplicate({ token: preview.token, selections: [{ bucketId: bucket.id, keeperId: 2 }] });
+  assert.equal(result.closed, 1);
+  assert.deepEqual([...state.tabs.keys()], [2, 3, 4]);
+  await assert.rejects(deduplicate({ token: preview.token, selections: [] }), /失效/);
+});
+
+test('预览范围不扩容，规则或allowlist变化后拒绝关闭', async () => {
+  const base = fixture([
+    { id: 1, windowId: 1 }, { id: 2, windowId: 1 },
+    { id: 3, windowId: 2 }, { id: 4, windowId: 2 },
+  ]);
+  let rules = [];
+  let allowlist = [];
+  const deduplicate = createDeduplicator(base.api, { getRules: async () => rules, getAllowlist: async () => allowlist });
+  const preview = await deduplicate.preview({ scope: 'window', windowId: 1 });
+  assert.equal(preview.buckets[0].tabs.every(tab => tab.windowId === 1), true);
+  rules = [{ origin: 'https://example.com', ignoreParams: ['utm'] }];
+  await assert.rejects(deduplicate({ token: preview.token, selections: [{
+    bucketId: preview.buckets[0].id, keeperId: preview.buckets[0].keeperId,
+  }] }), /已经变化/);
+  assert.equal(base.state.removed.length, 0);
+
+  rules = [];
+  allowlist = ['https://example.com'];
+  const allowedPreview = await deduplicate.preview({ scope: 'all' });
+  assert.equal(allowedPreview.buckets.length, 0);
+});
+
+test('执行复核拒绝非法keeper、过期token和预览后安全属性变化', async () => {
+  let timestamp = 10;
+  const invalid = fixture([{ id: 1 }, { id: 2 }]);
+  const deduplicate = createDeduplicator(invalid.api, { now: () => timestamp });
+  let preview = await deduplicate.preview();
+  await assert.rejects(deduplicate({ token: preview.token, selections: [{
+    bucketId: preview.buckets[0].id, keeperId: 999,
+  }] }), /不属于/);
+  assert.equal(invalid.state.removed.length, 0);
+
+  preview = await deduplicate.preview();
+  invalid.state.tabs.get(2).pinned = true;
+  const unchanged = await deduplicate({ token: preview.token, selections: [{
+    bucketId: preview.buckets[0].id, keeperId: preview.buckets[0].keeperId,
+  }] });
+  assert.equal(unchanged.closed, 0);
+  assert.equal(invalid.state.removed.length, 0);
+
+  invalid.state.tabs.get(2).pinned = false;
+  preview = await deduplicate.preview();
+  timestamp += 5 * 60 * 1000;
+  await assert.rejects(deduplicate({ token: preview.token, selections: [] }), /失效/);
+});
+
+test('journal.prepare期间规则或allowlist变化会停止计划并结算记录但不删除', async () => {
+  for (const change of ['rules', 'allowlist']) {
+    const current = fixture([{ id: 1 }, { id: 2 }]);
+    let rules = [];
+    let allowlist = [];
+    const settled = [];
+    const journal = {
+      begin: () => 'batch',
+      async prepare(_batch, tab) {
+        if (change === 'rules') rules = [{ origin: 'https://example.com', ignoreParams: ['utm'] }];
+        else allowlist = ['https://example.com'];
+        return `item-${tab.id}`;
+      },
+      async settle(_batch, outcomes) { settled.push([...outcomes]); },
+    };
+    const deduplicate = createDeduplicator(current.api, {
+      journal, getRules: async () => rules, getAllowlist: async () => allowlist,
+    });
+    const preview = await deduplicate.preview();
+    const bucket = preview.buckets[0];
+    const result = await deduplicate({ token: preview.token, selections: [{
+      bucketId: bucket.id, keeperId: bucket.keeperId,
+    }] });
+    assert.deepEqual(result, { closed: 0, skipped: 1, failed: 0, remaining: 1 });
+    assert.deepEqual(current.state.removed, []);
+    assert.equal(settled.length, 1);
+    assert.match(settled[0][0][1], /页面仍存在/);
+  }
 });

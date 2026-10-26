@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, validateSettings, findRule } from './rules.js';
+import { DEFAULT_SETTINGS, validateSettings, findRule, explainRule } from './rules.js';
 
 export function createAutoGrouper(api, onError = console.warn, shouldSuppress = () => false) {
   let tail = Promise.resolve();
@@ -107,7 +107,55 @@ export function createAutoGrouper(api, onError = console.warn, shouldSuppress = 
     };
   }
 
-  return { schedule, settingsChanged, applyWindow, invalidate: id => pending.delete(id) };
+  async function previewWindow({ windowId, rules: suppliedRules } = {}) {
+    if (!Number.isInteger(windowId) || windowId < 0) throw new Error('无法确定当前窗口，请重试。');
+    const window = await api.windows.get(windowId);
+    if (window.type !== 'normal' || window.incognito) throw new Error('只能预览普通窗口。');
+    let rules;
+    let enabled = true;
+    if (suppliedRules === undefined) {
+      const { settings: stored } = await api.storage.local.get({ settings: DEFAULT_SETTINGS });
+      const settings = validateSettings(stored);
+      rules = settings.rules;
+      enabled = settings.enabled;
+    } else {
+      rules = validateSettings({ enabled: true, duplicatePromptEnabled: true, rules: suppliedRules }).rules;
+    }
+    const tabs = await api.tabs.query({ windowId });
+    const groups = await api.tabGroups.query({ windowId });
+    const byId = new Map(groups.map(group => [group.id, group]));
+    const results = [];
+    let matched = 0;
+    let excluded = 0;
+    for (const tab of tabs) {
+      let reason = null;
+      let targetGroup = null;
+      if (!enabled) reason = 'disabled';
+      else if (!eligible(tab)) reason = 'ineligible';
+      else if (await shouldSuppress(tab)) reason = 'paused';
+      else if (tab.groupId >= 0 && (!byId.has(tab.groupId) || byId.get(tab.groupId).shared === true)) reason = 'protected-group';
+      else {
+        const explanation = explainRule(tab.url, rules);
+        if (explanation.rule) {
+          const named = groups.filter(group => group.title === explanation.rule.group);
+          if (!named.some(group => group.shared !== true) && named.some(group => group.shared === true)) {
+            reason = 'shared-target';
+          } else {
+            targetGroup = explanation.rule.group;
+            reason = 'matched';
+            matched += 1;
+          }
+        } else {
+          reason = explanation.reason;
+          if (reason === 'excluded') excluded += 1;
+        }
+      }
+      results.push({ tabId: tab.id, title: tab.title || '', url: tab.url || '', targetGroup, reason });
+    }
+    return { results, matched, excluded, skipped: results.length - matched - excluded };
+  }
+
+  return { schedule, settingsChanged, applyWindow, previewWindow, invalidate: id => pending.delete(id) };
 }
 
 export function createReadingList(api, externalEnqueue = null) {

@@ -1,5 +1,6 @@
 import { canonicalUrl, normalizeDedupRules } from './url-identity.js';
 import { confirmAction } from './ui-dialog.js';
+import { attachWorkspaceActions, previewWorkspace } from './tools-enhancements.js';
 
 const $ = selector => document.querySelector(selector);
 const status = $('#status');
@@ -162,7 +163,8 @@ function renderWorkspaces() {
     const actions = element('div', undefined, 'actions');
     const restore = element('button', '恢复工作区');
     action(restore, async () => {
-      const result = await send('WORKSPACE_RESTORE', { id: workspace.id });
+      const result = await previewWorkspace({ id: workspace.id });
+      if (!result) return;
       notify(summary(result), result.failed || result.interrupted ? 'error' : 'info');
       await refresh();
     });
@@ -175,7 +177,9 @@ function renderWorkspaces() {
       await refresh();
       notify('已删除工作区记录。');
     });
+    restore.textContent = '预览恢复';
     actions.append(restore, remove);
+    attachWorkspaceActions(actions, workspace, library.revision, refresh);
     item.append(copy, actions);
     list.append(item);
   }
@@ -215,7 +219,7 @@ function invalidatePreview() {
   $('#confirm-import').disabled = true;
   $('#import-preview').hidden = true;
 }
-const names = { settingsChanged: '分组设置将更新', readingAdded: '新增稍后读', readingReplaced: '覆盖稍后读', favoritesChanged: '常用入口变更', dedupRulesChanged: '去重规则变更', workspacesAdded: '新增工作区', workspacesReplaced: '覆盖工作区', totalItems: '导入后条目合计' };
+const names = { preferencesChanged: '外观偏好变更', duplicateAllowlistChanged: '允许重复站点变更', settingsChanged: '分组设置将更新', readingAdded: '新增稍后读', readingReplaced: '覆盖稍后读', favoritesChanged: '常用入口变更', dedupRulesChanged: '去重规则变更', workspacesAdded: '新增工作区', workspacesReplaced: '覆盖工作区', totalItems: '导入后条目合计' };
 function showPreview(result) {
   const box = $('#import-preview');
   box.replaceChildren(element('strong', $('#import-mode').value === 'merge' ? '合并预览：冲突时保留本机配置' : '覆盖预览：本机配置将使用此备份'));
@@ -227,7 +231,7 @@ function showPreview(result) {
   if (result.conflicts?.length) {
     box.append(element('p', `发现 ${result.conflicts.length} 项冲突：`));
     const conflicts = element('ul');
-    result.conflicts.slice(0, 20).forEach(conflict => conflicts.append(element('li', typeof conflict === 'string' ? conflict : `${({ settings: '分组设置', rules: '分组规则', favorites: '常用入口', dedupRules: '去重规则', readingList: '稍后读', workspaces: '工作区' })[conflict.section] || '配置'}：${conflict.key}`)));
+    result.conflicts.slice(0, 20).forEach(conflict => conflicts.append(element('li', typeof conflict === 'string' ? conflict : `${({ preferences: '外观偏好', duplicateAllowlist: '允许重复站点', settings: '分组设置', rules: '分组规则', favorites: '常用入口', dedupRules: '去重规则', readingList: '稍后读', workspaces: '工作区' })[conflict.section] || '配置'}：${conflict.key}`)));
     box.append(conflicts);
   }
   box.append(element('p', '确认后才会写入。若其他页面修改了配置，请重新预览。', 'small muted'));
