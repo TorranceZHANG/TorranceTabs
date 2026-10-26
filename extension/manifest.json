@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TorranceTabs · 标签管理",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "minimum_chrome_version": "110",
   "description": "网址前缀分组、可撤销去重、常用站点快捷入口、项目工作区与配置迁移。",
   "permissions": [

@@ -1,29 +1,38 @@
-# 1.7.0 验证记录
+# 1.7.1 验证记录
 
-- 基线：`7e450e5b73aef1af6dfc3a4ddde7a1542dd47598`（1.6.1）。
-- 用户已审核的 UI 副本完整 extension 指纹：`af5a9a99251135c7386b91e9a0841c8cd710df7c02373d25e9ae262656cd81a9`；发布扩展与该副本逐文件一致，仅 manifest/package 版本调整为 1.7.0。
-- 源码内容指纹 SHA-256：`51a076bde572b00200ba5b9a7718fe026039f1e0b65d4f88ac11098c097ab304`。算法为相对路径到文件 SHA-256 映射，排序且紧凑 JSON 再取 SHA-256；排除 `.git`、`dist`、`__pycache__`、`node_modules`、`.pyc` 和本记录自身。
-- 发布 ZIP：`TorranceTabs-v1.7.0.zip`，SHA-256：`e35bcc95853dfc4cd322c442d5844188539820d9c5b7064fecda4ad7143bc22b`。
-- 构建模式：原生 ES Modules / Manifest V3，无新增生产依赖；安装器仅 Python 标准库和 curl。检查无额外 flags。
+- 基线：`c87553db77d3ba73910421d1abe00ea115b37914`（1.7.0）。生产差异仅 `quick.css` 和 manifest/package 版本号；业务 JS、存储协议、权限和四个快捷命令均不变，无新标签页接管。
+- 源码内容指纹 SHA-256：`b43593bc42d24ba38f4d7e6c64aa1c5c3fcad8d7189bf64ef2ed5bcb2905e736`。算法为相对路径到文件 SHA-256 映射，排序且紧凑 JSON 再取 SHA-256；排除 `.git`、`dist`、`__pycache__`、`node_modules`、`.pyc` 和本记录自身。
+- 发布 ZIP：`TorranceTabs-v1.7.1.zip`，SHA-256：`7dbb87e83943e1606e4bac0dd7b3a844449d0e757788c9b09e29b74725876c14`。
+- 构建模式：原生 ES Modules / Manifest V3，无新增生产依赖，检查无额外 flags。
 
-## 执行证据
+## 根因与针对性验证
+
+1.7.0 的 `body { width:400px; max-width:100vw }` 会在内容自动定宽时被较小的初始视口钳住。Chrome 工具栏弹窗会[按内容自动确定大小](https://developer.chrome.com/docs/extensions/reference/api/action#popup)；原 CSS 无法向宿主请求设计宽度，头部“工具箱”因此分成三行。修复为文档和内容的明确 400px 最小宽度，移除视口上限，并禁止头部操作区收缩或换行。
+
+在本机 Chrome 中，使用真实 quick.html/quick.css 和合成数据，通过内容宽度反馈模拟自动定宽，得到：
+
+| 初始视口 | 1.7.0 最终宽度 / 工具箱行数 | 1.7.1 最终宽度 / 工具箱行数 |
+| --- | --- | --- |
+| 25px | 228px / 3 行 | 400px / 1 行 |
+| 230px | 230px / 3 行 | 400px / 1 行 |
+| 320px | 320px / 1 行 | 400px / 1 行 |
+| 400px | 400px / 1 行 | 400px / 1 行 |
+
+每种初始宽度均反复测量六轮，修复后文档、body 和宿主宽度稳定为 400px。“工具箱”按钮高度为 32px。旧版表现与用户截图中的约 228px 弹窗和三行按钮一致。独立只读审查复核了证据、CSS 作用域及发布包，无阻断项。
+
+## 构建与回归
 
 | 环境 | 实际命令 / 检查 | 结果 |
 | --- | --- | --- |
-| macOS：`/opt/homebrew/bin/node` 24.10.0，Homebrew Python 3.13.7 | `make check test package` | 退出 0；161 项扩展测试、20 项安装器测试通过，无跳过 |
-| zhr Linux：`/usr/local/bin/node` 22.9.0，`/usr/bin/python3` 3.6.8 | `make check test package` | 退出 0；161 项扩展测试、20 项安装器测试通过，无跳过 |
-| macOS / zhr | ZIP SHA-256 比较与 ZIP CRC 检查 | 退出 0；两台机器的正式包字节一致 |
-| 发布边界 | 已审核 UI 逐文件比较、manifest 字段比较、ZIP 条目检查 | 退出 0；权限和快捷命令不变，无新标签页接管；`ui.css`、`ui-dialog.js` 已打包，不含测试、预览服务器或 API 模拟桩 |
-| Chrome 本机 HTTP 预览 | 使用合成数据操作实际界面源码 | 快捷清理反馈、确认/取消/Escape、删除后的焦点、浮层失败重试和保留均已观察；五类页面在 390px 下无横向控件溢出 |
+| macOS：`~/.nvm/versions/node/v22.22.3/bin/node` 22.22.3，Homebrew Python 3.13.7 | `make check test package` | 退出 0；161 项扩展测试和 20 项安装器测试通过，无跳过 |
+| zhr Linux：`/usr/local/bin/node` 22.9.0，`/usr/bin/python3` 3.6.8 | `make check test package` | 退出 0；161 项扩展测试和 20 项安装器测试通过，无跳过 |
+| macOS / zhr | ZIP SHA-256、CRC 与源码成员比较 | 退出 0；42 条目，两机打包字节一致；quick.css 修复已包含，不含测试、预览服务器或 API 模拟桩 |
+| 独立审查 | 文件差异、manifest、CSS 引用及尺寸证据断言 | 退出 0；样式仅作用于工具栏 quick.html，其他扩展页面不受影响 |
 
-快捷面板常规状态约 576px，清理成功状态约 594px。确认框取消和 Escape 后返回触发按钮，确认删除导致按钮消失时返回主内容。已检查空状态、错误反馈以及加载提示。UI 小字和 placeholder 使用共享可读颜色。
+完整日志及尺寸 JSON/对比图保存在维护工作区，zhr 日志位于仓库外。源码传输和 Git 推送使用 SSH，经 zhr 执行，不使用 scp。
 
-日志保存在维护工作区；zhr 验证日志位于仓库外。源码传输及 Git 推送使用 SSH 标准输入流，经 zhr 执行，不使用 scp。
+## 边界
 
-## 限制与更新方式
+尺寸检查模拟内容自动定宽，未直接自动化检查受保护的原生 action popup。发布后需重新加载扩展并打开工具栏面板做一次目视确认。未覆盖其他操作系统、浏览器缩放或本地化；若在小于 400px 的普通 iframe 中手动打开专用 quick.html，会出现横向溢出。
 
-HTTP 预览使用隔离的模拟 Chrome API，不等同于真实扩展的跨窗口关闭、恢复、注入、文件选择或授权联调。未改变这些核心业务协议和存储格式。未重复真实网页破坏性操作，也未验证其他系统或屏幕阅读器。
-
-本机文件更新沿用原加载路径和扩展注册，并保留旧文件备份。Chrome 仍需重新加载扩展才会使用新版本；规则和链接继续保存在原扩展的本机存储中，新标签页保持原样。
-
-GitHub CI、正式 Release 与公网下载在推送后另行核对，不以本地打包结果替代。其他机器运行 README 中的安装/更新命令，再在 Chrome 扩展管理页重新加载。
+本机更新沿用原加载目录和扩展注册，保留旧文件备份，不读写 Chrome 中的规则或配置。GitHub CI、Release 与公网更新链路在推送后另行核对。
