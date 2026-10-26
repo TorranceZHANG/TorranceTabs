@@ -140,6 +140,59 @@ input[type="file"] {
   padding: 6px;
 }
 
+#backup .backup-form {
+  display: grid;
+  gap: 16px;
+}
+
+#backup .backup-field {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+}
+
+#backup .backup-field .small {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+#import-file {
+  min-height: 44px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+#import-file::file-selector-button {
+  min-height: 30px;
+  margin: 0 10px 0 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 5px 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 550;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background-color 140ms, border-color 140ms;
+}
+
+#import-file:hover:not(:disabled)::file-selector-button {
+  border-color: #91ada3;
+  background: var(--accent-soft);
+}
+
+#import-file:disabled,
+#import-file:disabled::file-selector-button {
+  cursor: not-allowed;
+}
+
+#backup .preview {
+  margin-top: 0;
+}
+
 input[type="checkbox"] {
   width: 16px;
   height: 16px;

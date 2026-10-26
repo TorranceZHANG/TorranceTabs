@@ -134,16 +134,25 @@
                 <p>导出分组设置、稍后读、常用入口、去重规则和工作区。</p>
               </div>
             </div>
-            <p class="risk-note"><strong>注意：</strong>备份可能包含内部链接，请自行保管。浏览器授权与临时提醒不会导出。</p>
+            <p class="risk-note"><strong>注意：</strong>备份可能含内部链接，请妥善保管。授权和临时提醒不会导出。</p>
             <button id="export-config" class="secondary-button" type="button">导出配置文件</button>
             <hr>
-            <label>选择备份文件<input id="import-file" type="file" accept="application/json,.json"></label>
-            <label>导入方式<select id="import-mode"><option value="merge">合并，冲突时保留本机配置</option><option value="replace">覆盖，使用备份中的配置</option></select></label>
-            <div class="actions">
-              <button id="preview-import" class="secondary-button" type="button" disabled>预览导入</button>
-              <button id="confirm-import" class="primary" type="button" disabled>确认导入</button>
+            <div class="backup-form">
+              <div class="backup-field">
+                <label for="import-file">选择备份文件</label>
+                <input id="import-file" type="file" accept="application/json,.json" aria-describedby="import-file-help">
+                <p id="import-file-help" class="small muted">支持 JSON 文件，最大 1 MB。</p>
+              </div>
+              <div class="backup-field">
+                <label for="import-mode">导入方式</label>
+                <select id="import-mode"><option value="merge">合并，冲突时保留本机配置</option><option value="replace">覆盖，使用备份中的配置</option></select>
+              </div>
+              <div class="actions">
+                <button id="preview-import" class="secondary-button" type="button" disabled>预览导入</button>
+                <button id="confirm-import" class="primary" type="button" disabled>确认导入</button>
+              </div>
+              <div id="import-preview" class="preview" hidden aria-live="polite"></div>
             </div>
-            <div id="import-preview" class="preview" hidden aria-live="polite"></div>
           </section>
 
           <section id="updates" class="tool-section" aria-labelledby="updates-title">

@@ -1,38 +1,38 @@
-# 1.7.1 验证记录
+# 1.7.2 验证记录
 
-- 基线：`c87553db77d3ba73910421d1abe00ea115b37914`（1.7.0）。生产差异仅 `quick.css` 和 manifest/package 版本号；业务 JS、存储协议、权限和四个快捷命令均不变，无新标签页接管。
-- 源码内容指纹 SHA-256：`b43593bc42d24ba38f4d7e6c64aa1c5c3fcad8d7189bf64ef2ed5bcb2905e736`。算法为相对路径到文件 SHA-256 映射，排序且紧凑 JSON 再取 SHA-256；排除 `.git`、`dist`、`__pycache__`、`node_modules`、`.pyc` 和本记录自身。
-- 发布 ZIP：`TorranceTabs-v1.7.1.zip`，SHA-256：`7dbb87e83943e1606e4bac0dd7b3a844449d0e757788c9b09e29b74725876c14`。
+- 基线：`9daf713b5fe52c228785b3be5183c1702374992b`（1.7.1）。生产差异仅 `tools.html`、`tools.css` 和 manifest/package 版本号；所有业务 JS、存储协议、权限和四个快捷命令均不变，无新标签页接管。1.7.1 的 400px 工具栏弹窗修复保留。
+- 源码内容指纹 SHA-256：`3a064124dea1fd16fc3fd3b0cf28e6aac703f018ee8afe99158310be0c8f326c`。算法为相对路径到文件 SHA-256 映射，排序且紧凑 JSON 再取 SHA-256；排除 `.git`、`dist`、`__pycache__`、`node_modules`、`.pyc` 和本记录自身。
+- 发布 ZIP：`TorranceTabs-v1.7.2.zip`，SHA-256：`e0c668c318c903ac2e7460e28a049f75a1e8b2305cb2a2c33d680028d9339e6e`。
 - 构建模式：原生 ES Modules / Manifest V3，无新增生产依赖，检查无额外 flags。
 
 ## 根因与针对性验证
 
-1.7.0 的 `body { width:400px; max-width:100vw }` 会在内容自动定宽时被较小的初始视口钳住。Chrome 工具栏弹窗会[按内容自动确定大小](https://developer.chrome.com/docs/extensions/reference/api/action#popup)；原 CSS 无法向宿主请求设计宽度，头部“工具箱”因此分成三行。修复为文档和内容的明确 400px 最小宽度，移除视口上限，并禁止头部操作区收缩或换行。
+备份导入表单只有标签内部的间距，字段之间及下拉框与操作按钮之间没有独立间距；文件选择按钮使用浏览器默认外观。新结构为每个字段提供独立容器，标签与控件间距 8px，字段及操作区之间为 16px。文件选择按钮继承页面字体、边框和颜色，并补充悬停、禁用及格式帮助说明。
 
-在本机 Chrome 中，使用真实 quick.html/quick.css 和合成数据，通过内容宽度反馈模拟自动定宽，得到：
+本机 Chrome 使用实际 tools.html/tools.css/tools.js，通过内存 File 和模拟扩展 API 检查界面。没有调用原生文件选择器或读取、导入用户文件。覆盖 500、390、320px 三种视口宽度与下列四种状态，共 12 组：
 
-| 初始视口 | 1.7.0 最终宽度 / 工具箱行数 | 1.7.1 最终宽度 / 工具箱行数 |
-| --- | --- | --- |
-| 25px | 228px / 3 行 | 400px / 1 行 |
-| 230px | 230px / 3 行 | 400px / 1 行 |
-| 320px | 320px / 1 行 | 400px / 1 行 |
-| 400px | 400px / 1 行 | 400px / 1 行 |
+| 状态 | 预览按钮 | 确认按钮 | 结果 |
+| --- | --- | --- | --- |
+| 未选择文件 | 禁用 | 禁用 | 无横向溢出 |
+| 长中文文件名、有效 JSON | 可用 | 禁用 | 无横向溢出 |
+| 完成导入预览 | 可用 | 可用 | 预览可见，无横向溢出 |
+| 无效 JSON | 禁用 | 禁用 | 错误可见，无横向溢出 |
 
-每种初始宽度均反复测量六轮，修复后文档、body 和宿主宽度稳定为 400px。“工具箱”按钮高度为 32px。旧版表现与用户截图中的约 228px 弹窗和三行按钮一致。独立只读审查复核了证据、CSS 作用域及发布包，无阻断项。
+12 组均通过 DOM 断言。修复前操作区间距 0px，修复后 16px；文件按钮圆角从原生 0px 变为 6px。标签 for 和帮助文本 aria-describedby 均关联唯一目标。导入预览和确认的原有门禁、导入锁不变。独立只读审查复核了作用域、全部业务 ID、权限、产物及上述证据，无阻断项。
 
 ## 构建与回归
 
 | 环境 | 实际命令 / 检查 | 结果 |
 | --- | --- | --- |
-| macOS：`~/.nvm/versions/node/v22.22.3/bin/node` 22.22.3，Homebrew Python 3.13.7 | `make check test package` | 退出 0；161 项扩展测试和 20 项安装器测试通过，无跳过 |
+| macOS：`/Users/torrance/.nvm/versions/node/v22.22.3/bin/node` 22.22.3，`/opt/homebrew/opt/python@3.13/bin/python3.13` 3.13.7 | `make check test package` | 退出 0；161 项扩展测试和 20 项安装器测试通过，无跳过 |
 | zhr Linux：`/usr/local/bin/node` 22.9.0，`/usr/bin/python3` 3.6.8 | `make check test package` | 退出 0；161 项扩展测试和 20 项安装器测试通过，无跳过 |
-| macOS / zhr | ZIP SHA-256、CRC 与源码成员比较 | 退出 0；42 条目，两机打包字节一致；quick.css 修复已包含，不含测试、预览服务器或 API 模拟桩 |
-| 独立审查 | 文件差异、manifest、CSS 引用及尺寸证据断言 | 退出 0；样式仅作用于工具栏 quick.html，其他扩展页面不受影响 |
+| macOS / zhr | ZIP SHA-256、CRC 与源码成员比较 | 退出 0；42 条目，两机打包字节一致；不含测试、预览服务器或 API 模拟桩 |
+| 独立审查 | 扩展文件差异、HTML 关联、布局证据及 ZIP 断言 | 退出 0；仅两个界面文件和版本号变化 |
 
-完整日志及尺寸 JSON/对比图保存在维护工作区，zhr 日志位于仓库外。源码传输和 Git 推送使用 SSH，经 zhr 执行，不使用 scp。
+本机完整日志为维护工作区 `outputs/TorranceTabs-v1.7.2-local-validation.log`；12 组布局记录为 `outputs/TorranceTabs-v1.7.2-backup-layout.json`，另存对比图和局部截图。zhr 完整日志位于仓库外 `/home/haoming.zhr/code/TorranceTabs-v1.7.2-validation.log`。最终只更新本验证文档，生产文件与已验证快照逐字节核对。源码传输和 Git 推送使用 SSH，经 zhr 执行，不使用 scp。
 
-## 边界
+## 边界与更新
 
-尺寸检查模拟内容自动定宽，未直接自动化检查受保护的原生 action popup。发布后需重新加载扩展并打开工具栏面板做一次目视确认。未覆盖其他操作系统、浏览器缩放或本地化；若在小于 400px 的普通 iframe 中手动打开专用 quick.html，会出现横向溢出。
+布局验证使用模拟扩展 API，未真实导入用户配置；未覆盖不同操作系统的原生文件选择器、取消流程或屏幕阅读器实测。没有新增业务测试来镜像 CSS 实现。
 
-本机更新沿用原加载目录和扩展注册，保留旧文件备份，不读写 Chrome 中的规则或配置。GitHub CI、Release 与公网更新链路在推送后另行核对。
+本机更新沿用原加载目录和扩展注册，保留旧文件备份，不读写 Chrome 中的规则或配置。更新后需重新加载扩展，再刷新原工具箱页面。GitHub CI、Release 与公开资产校验值在推送后另行核对；不将此前受网络限制的公开资产下载当作已通过。
