@@ -1,4 +1,5 @@
 import { canonicalUrl, normalizeDedupRules } from './url-identity.js';
+import { confirmAction } from './ui-dialog.js';
 
 const $ = selector => document.querySelector(selector);
 const status = $('#status');
@@ -63,6 +64,12 @@ function action(button, task) {
       else if (button.id === 'confirm-import') button.disabled = !previewToken;
       else if (button.id === 'preview-import') button.disabled = !importBackup;
       else button.disabled = false;
+      // Disabling a dialog trigger clears focus before the dialog is created.
+      // Restore only after the action unlocks, without stealing a newer focus.
+      if (document.activeElement === document.body) {
+        const target = button.isConnected ? button : $('#main-content');
+        if (target && !target.disabled) target.focus();
+      }
     }
   });
 }
@@ -161,7 +168,9 @@ function renderWorkspaces() {
     });
     const remove = element('button', '删除', 'danger');
     action(remove, async () => {
-      if (!confirm(`删除工作区“${workspace.name}”的保存记录？不会关闭任何已打开页面。`)) return;
+      if (!(await confirmAction({ title: '删除工作区记录',
+        message: `删除工作区“${workspace.name}”的保存记录？不会关闭任何已打开页面。`,
+        confirmLabel: '删除记录', danger: true }))) return;
       await send('WORKSPACE_DELETE', { id: workspace.id });
       await refresh();
       notify('已删除工作区记录。');
@@ -230,7 +239,8 @@ action($('#save-library'), () => withConfigurationLock(async () => {
   notify('常用入口与去重规则已保存。');
 }));
 action($('#reload'), async () => {
-  if (dirty && !confirm('重新读取将放弃当前未保存的入口和去重规则修改，是否继续？')) return;
+  if (dirty && !(await confirmAction({ title: '放弃未保存修改',
+    message: '重新读取将放弃当前未保存的入口和去重规则修改。', confirmLabel: '放弃并重新读取', danger: true }))) return;
   await refresh({ forms: true });
   notify('已读取最新配置与恢复记录。');
 });
@@ -252,7 +262,9 @@ $('#workspace-form').addEventListener('submit', async event => {
   finally { button.disabled = false; }
 });
 action($('#undo-discard'), async () => {
-  if (!confirm('清空所有清理恢复记录？不会关闭或修改已打开的网页，清空后无法再通过这些记录恢复。')) return;
+  if (!(await confirmAction({ title: '清空恢复记录',
+    message: '不会关闭或修改已打开的网页；清空后无法再通过这些记录恢复。',
+    confirmLabel: '清空记录', danger: true }))) return;
   const result = await send('UNDO_DISCARD');
   await refresh();
   notify(`已清空 ${result.discarded ?? 0} 条恢复记录。`);
@@ -305,7 +317,9 @@ action($('#preview-import'), async () => {
 });
 action($('#confirm-import'), () => withConfigurationLock(async () => {
   if (!previewToken) throw Error('请重新预览导入。');
-  if (dirty && !confirm('导入完成后会载入导入结果，当前未保存的表单修改将被放弃。是否继续？')) return;
+  if (dirty && !(await confirmAction({ title: '导入并放弃当前修改',
+    message: '导入完成后会载入导入结果，当前未保存的表单修改将被放弃。',
+    confirmLabel: '继续导入', danger: true }))) return;
   const token = previewToken;
   invalidatePreview();
   await send('CONFIG_IMPORT', { token, backup: importBackup });

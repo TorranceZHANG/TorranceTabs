@@ -16,6 +16,12 @@ TorranceTabs 不接管新标签页；新建标签页继续使用 Chrome 或其�
 
 扩展不调用外部 AI 服务、没有遥测，不读取正文、Cookie 或浏览历史数据库。规则与链接保存在 Chrome 当前用户配置中，详见 [安全说明](SECURITY.md) 和 [功能说明](extension/README.md)。
 
+## 界面
+
+1.7.0 统一了所有扩展页面与提醒的视觉样式：紧凑快捷面板、共享侧栏、清晰的规则表单，以及支持键盘操作的确认框。工具箱的六个功能分区保留原有入口，低频说明可展开查看。
+
+![TorranceTabs 快捷面板（示例数据）](docs/images/quick-panel.jpg)
+
 ## 一行安装
 
 macOS / Linux 需要 `curl`、Python 3.6+ 和 Chrome 110+；运行扩展无需 Node、Git、TorranceKit Mac App 或后台服务。
@@ -49,7 +55,7 @@ sh install.sh
 指定正式版本：
 
 ```sh
-sh install.sh --version 1.6.1
+sh install.sh --version 1.7.0
 ```
 
 未找到 Release、下载或校验失败时会明确退出，不会自动切到不断变化的 main 源码构建。固定版本的管理器与同一版本安装包配套使用。SHA-256 用于检查下载完整性，不是独立数字签名。
@@ -117,7 +123,7 @@ sh install.sh --source .
 也可把正式 ZIP 和相邻 `.sha256` 文件一起放到本地，再在源码仓库运行：
 
 ```sh
-sh install.sh --source ./dist/TorranceTabs-v1.6.1.zip --version 1.6.1
+sh install.sh --source ./dist/TorranceTabs-v1.7.0.zip --version 1.7.0
 ```
 
 `extension/` 是浏览器源码和 Node 测试；`scripts/` 是标准库安装器与发布打包器；`tests/` 是安装、校验、恢复和卸载测试。安装器测试使用隔离的临时目录，不操作真实 Chrome。发布包只包含生产扩展、安装管理脚本、版本和许可证，不包含开发测试、对话记录或本机日志。

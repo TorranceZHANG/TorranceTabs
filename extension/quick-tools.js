@@ -27,12 +27,13 @@ export async function initializeQuickTools(setIdentity) {
       const favorite = data.library.favorites[slot - 1];
       const button = document.createElement('button');
       button.type = 'button';
+      button.dataset.empty = String(!favorite);
       button.textContent = favorite?.name || `入口 ${slot}`;
       button.title = favorite?.url || '点击工具箱配置此入口';
       bind(button, async () => { if (favorite) await send('FAVORITE_OPEN', { slot }); else await tools('#favorites'); });
       list.append(button);
     }
-    $('#favorite-hint').textContent = data.library.favorites.some(Boolean) ? '已打开则直接定位 · 快捷键可在工具箱设置' : '在工具箱配置三个常用入口';
+    $('#favorite-hint').textContent = data.library.favorites.some(Boolean) ? '已打开的页面会直接定位，无需重复打开' : '点击空白入口，添加你的常用网站';
     const available = (data.undo?.items || []).filter(item => item.status === 'available').length;
     undoAvailable = available > 0;
     $('#quick-undo').disabled = !undoAvailable;

@@ -1,83 +1,13 @@
 <!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>标签快捷清理</title>
-    <link rel="stylesheet" href="quick.css">
-  </head>
-  <body>
-    <main class="popup-shell">
-      <header class="topbar">
-        <div class="brand">
-          <span class="brand-mark" aria-hidden="true">T</span>
-          <div>
-            <p class="eyebrow">TORRANCE TABS</p>
-            <h1>快捷清理</h1>
-          </div>
-        </div>
-        <div class="header-actions"><button id="open-tools" class="tools-button" type="button">工具箱</button>
-        <button id="refresh-data" class="icon-button" type="button" aria-label="刷新状态" title="刷新状态">↻</button></div>
-      </header>
-
-      <section class="favorite-strip" aria-label="常用站点"><div id="quick-favorites"></div><p id="favorite-hint">在工具箱配置三个常用入口</p></section>
-      <section class="cleanup-card" aria-labelledby="cleanup-title">
-        <div class="section-heading">
-          <div>
-            <h2 id="cleanup-title">重复标签</h2>
-            <p id="snapshot-time">正在读取普通窗口中的网页标签…</p>
-          </div>
-          <span id="cleanup-state" class="state-badge">读取中</span>
-        </div>
-
-        <dl class="stats" aria-label="标签快照">
-          <div>
-            <dt>网页标签</dt>
-            <dd id="tab-count">—</dd>
-          </div>
-          <div>
-            <dt>额外重复</dt>
-            <dd id="duplicate-count">—</dd>
-          </div>
-        </dl>
-
-        <button id="cleanup-tabs" class="cleanup-button" type="button" disabled>
-          <span class="button-icon" aria-hidden="true">✓</span>
-          <span id="cleanup-button-label">一键清理重复页</span>
-        </button>
-
-        <p class="scope-note">跨普通窗口按已保存的去重规则合并（默认完整网址）。共享、无痕、分屏和加载中的标签会跳过；优先保留正在使用、固定、播放或最近访问的一份。</p>
-
-        <div id="operation-status" class="operation-status" role="status" aria-live="polite" aria-atomic="true">
-          <p id="operation-summary">正在读取上次清理状态…</p>
-          <p id="operation-details" class="operation-details" hidden></p>
-          <p id="native-prompt-hint" class="native-prompt-hint" hidden>仍在等待 Chrome 完成关闭；如出现原生关闭提示，请先处理。</p>
-        </div>
-
-        <div id="load-error" class="load-error" role="alert" hidden>
-          <span id="load-error-text"></span>
-          <button id="retry-load" class="text-button" type="button">重新读取</button>
-        </div>
-      </section>
-
-      <div class="undo-row"><button id="quick-undo" class="secondary-button" type="button" disabled>恢复清理记录</button><button id="undo-details" class="text-button" type="button">选择恢复项</button></div><p id="quick-tools-status" class="scope-note" role="status" aria-live="polite" hidden></p>
-      <section class="shortcut-row" aria-labelledby="shortcut-title">
-        <div>
-          <h2 id="shortcut-title">键盘快捷键</h2>
-          <p>无需打开面板也能开始清理。</p>
-        </div>
-        <div class="shortcut-action">
-          <kbd id="shortcut-value">读取中</kbd>
-          <button id="edit-shortcut" class="text-button" type="button">修改快捷键</button>
-        </div>
-      </section>
-
-      <nav class="footer-actions" aria-label="扩展页面">
-        <button id="open-dashboard" class="secondary-button" type="button">标签看板</button>
-        <button id="open-settings" class="secondary-button" type="button">分组设置</button>
-      </nav>
-    </main>
-
-    <script type="module" src="quick.js"></script>
-  </body>
-</html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff"><title>TorranceTabs · 快捷面板</title><link rel="stylesheet" href="ui.css"><link rel="stylesheet" href="quick.css"></head>
+<body><main class="popup-shell">
+<header class="topbar"><div class="brand"><span class="app-brand-mark" aria-hidden="true"></span><div><h1 translate="no">TorranceTabs</h1><p>让标签各归其位</p></div></div><div class="header-actions"><button id="open-tools" class="text-button" type="button">工具箱</button><button id="refresh-data" class="icon-button" type="button" aria-label="刷新状态" title="刷新状态"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1"/></svg></button></div></header>
+<section class="favorite-strip" aria-label="常用站点"><h2>常用入口</h2><div id="quick-favorites"></div><p id="favorite-hint">在工具箱配置常用入口</p></section>
+<section class="cleanup-card" aria-labelledby="cleanup-title"><div class="section-heading"><h2 id="cleanup-title">标签清理</h2><span id="cleanup-state" class="state-badge">读取中</span></div><dl class="stats" aria-label="标签快照"><div><dt>已打开标签</dt><dd id="tab-count">—</dd></div><div class="duplicate-stat"><dt>额外重复</dt><dd id="duplicate-count">—</dd></div></dl><p id="snapshot-time" class="snapshot-time">正在读取标签…</p>
+<button id="cleanup-tabs" class="primary-button cleanup-button" type="button" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="8" y="7" width="12" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3m4-5 2 2 4-4"/></svg><span id="cleanup-button-label">一键清理重复页</span></button>
+<div id="operation-status" class="operation-status" role="status" aria-live="polite" aria-atomic="true"><p id="operation-summary">正在读取清理状态…</p><p id="operation-details" class="operation-details" hidden></p><p id="native-prompt-hint" class="native-prompt-hint" hidden>仍在等待 Chrome 完成关闭；如出现原生关闭提示，请先处理。</p></div><div id="load-error" class="load-error" role="alert" hidden><span id="load-error-text"></span><button id="retry-load" class="text-button" type="button">重新读取</button></div>
+<details class="cleanup-explanation"><summary>清理规则与保留顺序</summary><p class="scope-note">跨普通窗口按已保存的规则合并，默认比较完整网址。共享、无痕、分屏和加载中的标签会跳过；优先保留正在使用、固定、播放或最近访问的一份。清理后可从恢复记录找回链接。</p></details></section>
+<div class="undo-row"><button id="quick-undo" class="text-button" type="button" disabled>恢复清理记录</button><button id="undo-details" class="text-button" type="button">查看恢复记录</button></div><p id="quick-tools-status" class="tools-status" role="status" aria-live="polite" hidden></p>
+<section class="shortcut-row" aria-labelledby="shortcut-title"><h2 id="shortcut-title">快捷清理</h2><div class="shortcut-action"><kbd id="shortcut-value">读取中</kbd><button id="edit-shortcut" class="text-button" type="button">修改</button></div></section>
+<nav class="footer-actions" aria-label="扩展页面"><button id="open-dashboard" class="secondary-button" type="button">标签看板 <span aria-hidden="true">↗</span></button><button id="open-settings" class="secondary-button" type="button">分组设置 <span aria-hidden="true">↗</span></button></nav><p class="popup-footnote">本机存储 · 新标签页保持原样</p>
+</main><script type="module" src="quick.js"></script></body></html>

@@ -1,33 +1,29 @@
-# 1.6.1 验证记录
+# 1.7.0 验证记录
 
-- 基线：`f18bb61ca7ff6584fd8586c581ff131949de456b` 加更新检查兼容修复；六项功能沿用已审查的 1.6.0。
-- 源码内容指纹 SHA-256：`a7d78a8304b570e6c52a723906d454338293b266dd93dc3013465f9529ffc4bd`。相对路径到文件 SHA-256 映射，排序且紧凑的 JSON 再取 SHA-256；排除 `.git`、`dist`、`__pycache__`、`node_modules`、`.pyc`、macOS 元数据和本记录自身。
-- 发布 ZIP：`TorranceTabs-v1.6.1.zip`，SHA-256：`042bef6f20274f9034e5f87dbbf626317682a0693b52fca98b3e395c5283ac77`。
-- 构建模式：原生 ES Modules / Manifest V3，无生产依赖；安装器仅 Python 标准库和 curl。检查命令无额外 flags。
+- 基线：`7e450e5b73aef1af6dfc3a4ddde7a1542dd47598`（1.6.1）。
+- 用户已审核的 UI 副本完整 extension 指纹：`af5a9a99251135c7386b91e9a0841c8cd710df7c02373d25e9ae262656cd81a9`；发布扩展与该副本逐文件一致，仅 manifest/package 版本调整为 1.7.0。
+- 源码内容指纹 SHA-256：`51a076bde572b00200ba5b9a7718fe026039f1e0b65d4f88ac11098c097ab304`。算法为相对路径到文件 SHA-256 映射，排序且紧凑 JSON 再取 SHA-256；排除 `.git`、`dist`、`__pycache__`、`node_modules`、`.pyc` 和本记录自身。
+- 发布 ZIP：`TorranceTabs-v1.7.0.zip`，SHA-256：`e35bcc95853dfc4cd322c442d5844188539820d9c5b7064fecda4ad7143bc22b`。
+- 构建模式：原生 ES Modules / Manifest V3，无新增生产依赖；安装器仅 Python 标准库和 curl。检查无额外 flags。
 
-## 最终执行结果
+## 执行证据
 
-| 环境 | 命令 / 检查 | 结果 |
+| 环境 | 实际命令 / 检查 | 结果 |
 | --- | --- | --- |
-| macOS：`/opt/homebrew/bin/node` 24.10.0，`/opt/homebrew/bin/python3` 3.13.7 | `make check test package` | 退出0；161扩展测试、20安装器测试通过，无跳过 |
-| zhr Linux：`/usr/local/bin/node` 22.9.0，`/usr/bin/python3` 3.6.8 | `make check test package` | 退出0；161扩展测试、20安装器测试通过，无跳过 |
-| zhr | `python3 -m zipfile -t dist/TorranceTabs-v1.6.1.zip`；dist内`sha256sum -c TorranceTabs-v1.6.1.zip.sha256` | 均退出0；两台机器ZIP SHA相同 |
-| macOS 隔离目录 | 真实1.5.1 ZIP安装→1.6.0 ZIP更新（六项功能）；1.6.1 为相同生产布局的兼容修复 | 退出0；旧版备份保留，新版无新标签页接管，工具箱及核心模块齐全 |
-| 静态发布边界 | 新旧manifest权限比较、4个快捷命令、ZIP内容检查 | 退出0；必要及可选权限不变，不包含测试或UI预览桩 |
-| 独立审查 | 最终核心定向68项及工作区8项，源码/权限/版本/界面消息核对 | 退出0；已发现的关闭、恢复、并发导航、普通窗口选择及编辑保护问题均修复，无剩余阻断 |
+| macOS：`/opt/homebrew/bin/node` 24.10.0，Homebrew Python 3.13.7 | `make check test package` | 退出 0；161 项扩展测试、20 项安装器测试通过，无跳过 |
+| zhr Linux：`/usr/local/bin/node` 22.9.0，`/usr/bin/python3` 3.6.8 | `make check test package` | 退出 0；161 项扩展测试、20 项安装器测试通过，无跳过 |
+| macOS / zhr | ZIP SHA-256 比较与 ZIP CRC 检查 | 退出 0；两台机器的正式包字节一致 |
+| 发布边界 | 已审核 UI 逐文件比较、manifest 字段比较、ZIP 条目检查 | 退出 0；权限和快捷命令不变，无新标签页接管；`ui.css`、`ui-dialog.js` 已打包，不含测试、预览服务器或 API 模拟桩 |
+| Chrome 本机 HTTP 预览 | 使用合成数据操作实际界面源码 | 快捷清理反馈、确认/取消/Escape、删除后的焦点、浮层失败重试和保留均已观察；五类页面在 390px 下无横向控件溢出 |
 
-Lead亲自执行最终两台机器的完整检查和实包升级。源码传输与Git推送通过SSH，未使用scp。
+快捷面板常规状态约 576px，清理成功状态约 594px。确认框取消和 Escape 后返回触发按钮，确认删除导致按钮消失时返回主内容。已检查空状态、错误反馈以及加载提示。UI 小字和 placeholder 使用共享可读颜色。
 
-日志保存在维护工作区：本机 `outputs/TorranceTabs-v1.6.1-local-validation.log`，zhr `code/TorranceTabs-v1.6.1-validation.log`。
+日志保存在维护工作区；zhr 验证日志位于仓库外。源码传输及 Git 推送使用 SSH 标准输入流，经 zhr 执行，不使用 scp。
 
-## 功能回归与限制
+## 限制与更新方式
 
-测试覆盖导入预览后并发编辑、跨worker token、合并冲突/上限/旧数据兼容、完整URL复核、忽略参数编码保真、关闭前journal、容量拒绝与清空、恢复claim前后导航、预期loading/pending分组、目标共享状态变化、跨会话窗口复用、操作互斥和更新响应验证。
+HTTP 预览使用隔离的模拟 Chrome API，不等同于真实扩展的跨窗口关闭、恢复、注入、文件选择或授权联调。未改变这些核心业务协议和存储格式。未重复真实网页破坏性操作，也未验证其他系统或屏幕阅读器。
 
-真实Chrome中的HTTP合成API预览检查了工具箱、快捷面板、参数比较、恢复结果反馈，以及延迟保存时禁用编辑、完成后恢复控件；这是界面验证，不等同于真实Chrome扩展API联调。文件选择UI因自动化连接未开放文件URL访问而未完成，未更改权限或绕过限制。未在真实网页批量关闭/恢复标签；未验证Chrome原生关闭确认、实际注入与权限弹窗。Chrome最终状态读取到分组/关闭调用之间仍非原子。
+本机文件更新沿用原加载路径和扩展注册，并保留旧文件备份。Chrome 仍需重新加载扩展才会使用新版本；规则和链接继续保存在原扩展的本机存储中，新标签页保持原样。
 
-正式GitHub CI、Release和公网最新版本下载应在推送后另行核对；该记录不以离线检查替代公网检查。用户仍需在Chrome扩展管理页重新加载扩展，新标签页继续保持原样。
-
-## 更新检查兼容修复
-
-1.6.0 正式安装已通过公网闭环，但本机实测 GitHub API 返回403。1.6.1 不新增权限：已有GitHub授权时才对固定发布页做HEAD并校验最终版本地址；没有该授权时明确返回手动查看入口，不误报“暂无更新”。新增3项测试，更新模块6/6通过，独立审查批准。curl固定最新发布页HEAD实测200，但不替代真实扩展权限/CORS验证。
+GitHub CI、正式 Release 与公网下载在推送后另行核对，不以本地打包结果替代。其他机器运行 README 中的安装/更新命令，再在 Chrome 扩展管理页重新加载。

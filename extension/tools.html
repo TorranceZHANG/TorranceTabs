@@ -1,16 +1,178 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TorranceTabs 工具箱</title><link rel="stylesheet" href="tools.css"></head>
-<body><main class="shell">
-<header class="hero"><div><p class="eyebrow">TORRANCE TABS <span id="version">—</span></p><h1>让常用页面随手可达</h1><p class="muted">配置、工作区和恢复记录保存在本机，新标签页保持原样。</p></div><nav class="actions"><a href="dashboard.html" class="button">标签看板</a><a href="settings.html" class="button">分组设置</a><button id="reload" type="button">重新读取</button></nav></header>
-<nav class="section-nav" aria-label="工具箱导航"><a href="#favorites">常用入口</a><a href="#matching">去重规则</a><a href="#workspaces">项目工作区</a><a href="#recovery">清理撤销</a><a href="#backup">备份与迁移</a><a href="#updates">版本更新</a></nav>
-<div class="grid">
-<section id="favorites" class="card"><div class="heading"><div><p class="eyebrow">01 / QUICK ACCESS</p><h2>三个常用入口</h2></div><span class="tag">跨窗口定位</span></div><p class="muted">已打开就切换到已有页面，没有打开才新建。</p><div id="favorite-fields"></div><div class="actions"><button id="save-library" class="primary" type="button">保存入口与去重规则</button><button id="shortcuts" type="button">设置快捷键</button></div><p id="draft-state" class="muted small">尚无未保存修改</p></section>
-<section id="matching" class="card"><div class="heading"><div><p class="eyebrow">02 / MATCHING</p><h2>按网站设置去重</h2></div><button id="add-dedup-rule" type="button">＋ 添加网站</button></div><p class="muted">默认比较完整网址。只忽略你为该网站指定的追踪参数；其他参数和 # 后的内容仍参与比较。</p><div id="dedup-fields"></div><p class="small muted">网站填写完整来源，例如 https://ata.atatech.org；参数名例如 spm，多个名称用逗号分隔。</p><details><summary>试一下两个网址是否重复</summary><label>第一个网址<input id="compare-a" type="url" placeholder="https://example.com/article?spm=1"></label><label>第二个网址<input id="compare-b" type="url" placeholder="https://example.com/article?spm=2"></label><output id="compare-result" aria-live="polite">使用当前表单中的规则进行本地预览</output></details></section>
-<section id="workspaces" class="card wide"><div class="heading"><div><p class="eyebrow">03 / WORKSPACES</p><h2>保存一组工作现场</h2></div></div><p class="muted">保存网页链接、窗口和分组。恢复时复用已经打开的网页，新增页面按保存的窗口和组排列；已有页面保持当前位置。不会保存登录状态或表单内容。</p><form id="workspace-form" class="inline-form"><label>工作区名称<input id="workspace-name" maxlength="80" placeholder="例如：值班、性能测试" required></label><label>保存范围<select id="workspace-scope"><option value="current">当前窗口</option><option value="all">所有普通窗口</option></select></label><button class="primary" type="submit">保存工作区</button></form><p class="small muted">无痕、共享组、分屏和内部页面会跳过。</p><div id="workspace-list" class="list"></div></section>
-<section id="recovery" class="card wide"><div class="heading"><div><p class="eyebrow">04 / RECOVERY</p><h2>撤销重复页清理</h2></div><div class="actions"><button id="undo-discard" class="danger" type="button">清空恢复记录</button><button id="undo-selected" type="button">恢复选中</button><button id="undo-all" class="primary" type="button">恢复全部可恢复项</button></div></div><p class="muted">恢复原网页链接，并尽可能恢复分组。未保存的表单、滚动位置和页面运行状态无法保证恢复。记录不包含其他方式关闭的页面，保存在本机，最多保留 500 条、10 批清理记录；不再需要时可清空。中断记录不会自动重试。</p><div id="undo-list" class="list"></div></section>
-<section id="backup" class="card"><p class="eyebrow">05 / BACKUP</p><h2>备份与迁移</h2><p class="muted">导出分组规则、稍后读、常用入口、去重规则和工作区。备份可能包含内部链接，请自行保管；浏览器授权与临时提醒不会导出。</p><button id="export-config" type="button">导出配置文件</button><hr><label>选择备份文件<input id="import-file" type="file" accept="application/json,.json"></label><label>导入方式<select id="import-mode"><option value="merge">合并，冲突时保留本机配置</option><option value="replace">覆盖，使用备份中的配置</option></select></label><div class="actions"><button id="preview-import" type="button" disabled>预览导入</button><button id="confirm-import" class="primary" type="button" disabled>确认导入</button></div><div id="import-preview" class="preview" hidden aria-live="polite"></div></section>
-<section id="updates" class="card"><p class="eyebrow">06 / UPDATES</p><h2>版本更新</h2><p>当前版本 <strong id="current-version">—</strong></p><p class="muted">仅在你点击时访问 GitHub 检查正式版本，不发送标签或配置数据，不自动安装。</p><div class="actions"><button id="check-update" type="button">检查新版</button><a id="release-link" class="button" href="https://github.com/TorranceZHANG/TorranceTabs/releases" target="_blank" rel="noreferrer">查看发布记录</a></div><p id="update-result" class="small muted" aria-live="polite">尚未检查</p><label>macOS / Linux 更新命令<textarea id="update-command" rows="3" readonly spellcheck="false">curl -fsSL https://raw.githubusercontent.com/TorranceZHANG/TorranceTabs/main/install.sh | sh</textarea></label><button id="copy-update" type="button">复制更新命令</button><p class="small muted">运行后到 chrome://extensions 点击 TorranceTabs 的“重新加载”。手动加载的版本请覆盖原目录，保留原扩展注册。</p></section>
-</div><footer class="muted small">TorranceTabs · 本地优先的标签管理工具</footer>
-<div id="status" class="notice" role="status" aria-live="polite" hidden></div>
-</main><script type="module" src="tools.js"></script></body></html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f5f7f8">
+    <title>TorranceTabs 工具箱</title>
+    <link rel="stylesheet" href="ui.css">
+    <link rel="stylesheet" href="tools.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
+    <div class="app-layout">
+      <aside class="app-sidebar">
+        <a class="app-brand" href="dashboard.html" aria-label="TorranceTabs 标签看板">
+          <span class="app-brand-mark" aria-hidden="true">T</span>
+          <span translate="no">TorranceTabs</span>
+        </a>
+        <nav class="app-nav" aria-label="主要导航">
+          <a href="dashboard.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>标签看板</a>
+          <a href="tools.html" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M8 7V4h8v3M3 12h18m-9-2v4"/></svg>工具箱</a>
+          <a href="settings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2" fill="currentColor"/><circle cx="16" cy="12" r="2" fill="currentColor"/><circle cx="10" cy="18" r="2" fill="currentColor"/></svg>分组设置</a>
+        </nav>
+        <nav class="section-nav" aria-label="工具箱分区">
+          <span>本页内容</span>
+          <a href="#favorites">常用入口</a>
+          <a href="#matching">去重规则</a>
+          <a href="#workspaces">项目工作区</a>
+          <a href="#recovery">清理撤销</a>
+          <a href="#backup">备份与迁移</a>
+          <a href="#updates">版本更新</a>
+        </nav>
+        <div class="app-sidebar-foot">
+          <span>数据仅保存在本机</span>
+          <span id="version">—</span>
+        </div>
+      </aside>
+
+      <main id="main-content" class="app-main tools-main" tabindex="-1">
+        <header class="page-heading tools-heading">
+          <div>
+            <h1 class="page-title">工具箱</h1>
+            <p class="page-description">管理常用入口、去重方式、工作区与本地备份。</p>
+          </div>
+          <button id="reload" class="secondary-button" type="button">重新读取</button>
+        </header>
+
+        <div id="status" class="notice" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+
+        <div class="tools-grid">
+          <section id="favorites" class="tool-section" aria-labelledby="favorites-title">
+            <div class="section-heading">
+              <div class="section-title-row">
+                <div>
+                  <h2 id="favorites-title">三个常用入口</h2>
+                  <p>已打开就切换，没有打开才新建。</p>
+                </div>
+              </div>
+              <span class="tag">跨窗口定位</span>
+            </div>
+            <div id="favorite-fields" class="field-list"></div>
+            <div class="actions">
+              <button id="save-library" class="primary" type="button">保存入口与去重规则</button>
+              <button id="shortcuts" class="secondary-button" type="button">设置快捷键</button>
+            </div>
+            <p id="draft-state" class="muted small">尚无未保存修改</p>
+          </section>
+
+          <section id="matching" class="tool-section" aria-labelledby="matching-title">
+            <div class="section-heading">
+              <div class="section-title-row">
+                <div>
+                  <h2 id="matching-title">按网站设置去重</h2>
+                  <p>默认比较完整网址，只忽略明确指定的参数。</p>
+                </div>
+              </div>
+              <button id="add-dedup-rule" class="secondary-button" type="button">添加网站</button>
+            </div>
+            <div id="dedup-fields" class="field-list"></div>
+            <p class="small muted">网站填写完整来源，例如 https://ata.atatech.org；参数名可用逗号分隔。其他参数和 # 片段仍参与比较。</p>
+            <details class="tool-details">
+              <summary>比较两个网址</summary>
+              <div class="details-body">
+                <label>第一个网址<input id="compare-a" type="url" placeholder="https://example.com/article?spm=1"></label>
+                <label>第二个网址<input id="compare-b" type="url" placeholder="https://example.com/article?spm=2"></label>
+                <output id="compare-result" aria-live="polite">使用当前表单中的规则进行本地预览</output>
+              </div>
+            </details>
+          </section>
+
+          <section id="workspaces" class="tool-section wide" aria-labelledby="workspaces-title">
+            <div class="section-heading">
+              <div class="section-title-row">
+                <div>
+                  <h2 id="workspaces-title">项目工作区</h2>
+                  <p>保存网页、窗口与分组，之后按原结构恢复工作现场。</p>
+                </div>
+              </div>
+            </div>
+            <form id="workspace-form" class="inline-form">
+              <label>工作区名称<input id="workspace-name" maxlength="80" placeholder="例如：值班、性能测试" required></label>
+              <label>保存范围<select id="workspace-scope"><option value="current">当前窗口</option><option value="all">所有普通窗口</option></select></label>
+              <button class="primary" type="submit">保存工作区</button>
+            </form>
+            <details class="tool-details compact-details">
+              <summary>保存与恢复范围</summary>
+              <p>恢复时会复用已经打开的网页，已有页面保持当前位置。不会保存登录状态、表单内容或滚动位置；无痕、共享组、分屏和内部页面会跳过。</p>
+            </details>
+            <div id="workspace-list" class="list"></div>
+          </section>
+
+          <section id="recovery" class="tool-section wide" aria-labelledby="recovery-title">
+            <div class="section-heading recovery-heading">
+              <div class="section-title-row">
+                <div>
+                  <h2 id="recovery-title">撤销重复页清理</h2>
+                  <p>恢复原网址，并尽可能恢复原来的标签组。</p>
+                </div>
+              </div>
+              <div class="actions">
+                <button id="undo-discard" class="danger" type="button">清空记录</button>
+                <button id="undo-selected" class="secondary-button" type="button">恢复选中</button>
+                <button id="undo-all" class="primary" type="button">恢复全部</button>
+              </div>
+            </div>
+            <p class="risk-note"><strong>恢复限制：</strong>未保存的表单、滚动位置和页面运行状态无法保证恢复；中断记录不会自动重试。记录保存在本机，最多 500 条、10 批。</p>
+            <div id="undo-list" class="list"></div>
+          </section>
+
+          <section id="backup" class="tool-section" aria-labelledby="backup-title">
+            <div class="section-title-row">
+              <div>
+                <h2 id="backup-title">备份与迁移</h2>
+                <p>导出分组设置、稍后读、常用入口、去重规则和工作区。</p>
+              </div>
+            </div>
+            <p class="risk-note"><strong>注意：</strong>备份可能包含内部链接，请自行保管。浏览器授权与临时提醒不会导出。</p>
+            <button id="export-config" class="secondary-button" type="button">导出配置文件</button>
+            <hr>
+            <label>选择备份文件<input id="import-file" type="file" accept="application/json,.json"></label>
+            <label>导入方式<select id="import-mode"><option value="merge">合并，冲突时保留本机配置</option><option value="replace">覆盖，使用备份中的配置</option></select></label>
+            <div class="actions">
+              <button id="preview-import" class="secondary-button" type="button" disabled>预览导入</button>
+              <button id="confirm-import" class="primary" type="button" disabled>确认导入</button>
+            </div>
+            <div id="import-preview" class="preview" hidden aria-live="polite"></div>
+          </section>
+
+          <section id="updates" class="tool-section" aria-labelledby="updates-title">
+            <div class="section-title-row">
+              <div>
+                <h2 id="updates-title">版本更新</h2>
+                <p>当前版本 <strong id="current-version">—</strong></p>
+              </div>
+            </div>
+            <p class="muted">仅在你点击时访问 GitHub，不发送标签或配置，也不会自动安装。</p>
+            <div class="actions">
+              <button id="check-update" class="primary" type="button">检查新版</button>
+              <a id="release-link" class="button" href="https://github.com/TorranceZHANG/TorranceTabs/releases" target="_blank" rel="noreferrer">查看发布记录</a>
+            </div>
+            <p id="update-result" class="small muted" aria-live="polite">尚未检查</p>
+            <details class="tool-details">
+              <summary>命令行更新</summary>
+              <div class="details-body">
+                <label>macOS / Linux 更新命令<textarea id="update-command" rows="3" readonly spellcheck="false">curl -fsSL https://raw.githubusercontent.com/TorranceZHANG/TorranceTabs/main/install.sh | sh</textarea></label>
+                <button id="copy-update" class="secondary-button" type="button">复制更新命令</button>
+                <p class="small muted">运行后到 chrome://extensions 点击 TorranceTabs 的“重新加载”。手动加载的版本请覆盖原目录，保留原扩展注册。</p>
+              </div>
+            </details>
+          </section>
+        </div>
+
+        <footer class="page-foot muted small">TorranceTabs · 本地优先的标签管理工具</footer>
+      </main>
+    </div>
+    <script type="module" src="tools.js"></script>
+  </body>
+</html>
