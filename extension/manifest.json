@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TorranceTabs · 标签管理",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "minimum_chrome_version": "110",
   "description": "自动分组、实时标签搜索、可选侧栏、可预览去重、工作区历史与按需配置同步。",
   "permissions": [

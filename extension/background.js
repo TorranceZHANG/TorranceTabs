@@ -79,7 +79,7 @@ chrome.tabs.onReplaced.addListener((added, removed) => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.settings) {
     grouper.settingsChanged();
-    duplicateGuard.permissionsChanged().then(released => {
+    duplicateGuard.permissionsChanged(changes.settings.newValue?.duplicatePromptEnabled === false).then(released => {
       for (const id of released) void grouper.schedule(id);
     }).catch(error => console.warn('页内提醒设置状态更新失败：', error));
   }
@@ -120,7 +120,7 @@ chrome.runtime.onInstalled.addListener(details => {
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if (sender.id !== chrome.runtime.id || !message || typeof message !== 'object') return false;
   const privileged = new Set(['LIBRARY_GET', 'LIBRARY_SAVE', 'CONFIG_EXPORT', 'CONFIG_PREVIEW', 'CONFIG_IMPORT',
-    'FAVORITE_OPEN', 'UNDO_RESTORE', 'UNDO_DISCARD', 'WORKSPACE_SAVE', 'WORKSPACE_RESTORE', 'WORKSPACE_DELETE', 'CHECK_UPDATE', 'SAVE_SETTINGS',
+    'FAVORITE_OPEN', 'UNDO_RESTORE', 'UNDO_DISCARD', 'WORKSPACE_SAVE', 'WORKSPACE_RESTORE', 'WORKSPACE_DELETE', 'CHECK_UPDATE', 'SAVE_SETTINGS', 'DUPLICATE_PROMPT_SET_ENABLED',
     'PREFERENCES_GET', 'PREFERENCES_SAVE', 'WORKSPACE_UPDATE', 'WORKSPACE_HISTORY', 'WORKSPACE_PREVIEW_RESTORE', 'WORKSPACE_RESTORE_PREVIEW',
     'SNAPSHOT_GET', 'SNAPSHOT_CONFIGURE', 'SNAPSHOT_CAPTURE', 'SYNC_GET', 'SYNC_CONFIGURE', 'SYNC_UPLOAD', 'SYNC_PREVIEW', 'SYNC_APPLY',
     'DUPLICATE_POLICY_GET', 'DUPLICATE_ALLOWLIST_SAVE', 'DUPLICATE_PAUSE_SITE', 'GROUPING_PAUSE_TAB', 'RULES_PREVIEW',
@@ -150,6 +150,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   else if (['SAVE_READING_ITEM', 'REMOVE_READING_ITEM'].includes(message.type)) {
     task = async () => ({ readingList: await updateReadingList(message) });
   } else if (message.type === 'SAVE_SETTINGS') task = async () => ({ settings: await store.saveSettings(message.settings) });
+  else if (message.type === 'DUPLICATE_PROMPT_SET_ENABLED') task = async () => ({ settings: await store.setDuplicatePromptEnabled(message.enabled) });
   else if (message.type === 'LIBRARY_GET') task = () => library.get();
   else if (message.type === 'LIBRARY_SAVE') task = async () => ({ library: await store.saveLibrary(message) });
   else if (message.type === 'CONFIG_EXPORT') task = async () => ({ backup: await store.exportConfig() });

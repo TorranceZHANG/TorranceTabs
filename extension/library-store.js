@@ -244,6 +244,15 @@ export function createLibraryStore(api, enqueue = createLocalWriteQueue(), now =
   async function saveSettings(settings) {
     return enqueue(async () => { const valid = validateSettings(settings); await setLocal({ settings: valid }); return valid; });
   }
+  async function setDuplicatePromptEnabled(enabled) {
+    if (typeof enabled !== 'boolean') throw Error('重复页面提醒开关必须为布尔值。');
+    return enqueue(async () => {
+      const current = await localState();
+      const settings = validateSettings({ ...current.settings, duplicatePromptEnabled: enabled });
+      await setLocal({ settings }, current);
+      return settings;
+    });
+  }
   async function getPreferences() { return (await snapshot()).preferences; }
   async function savePreferences(preferences) {
     return enqueue(async () => { const valid = validatePreferences(preferences); await setLocal({ preferences: valid }); return valid; });
@@ -377,7 +386,7 @@ export function createLibraryStore(api, enqueue = createLocalWriteQueue(), now =
       return { captured: true, snapshot: clone(snapshot) };
     });
   }
-  return { snapshot, getLibrary, saveLibrary, saveSettings, getPreferences, savePreferences, getDuplicateAllowlist,
+  return { snapshot, getLibrary, saveLibrary, saveSettings, setDuplicatePromptEnabled, getPreferences, savePreferences, getDuplicateAllowlist,
     saveDuplicateAllowlist, exportConfig, previewConfig, importConfig, updateLibrary, updateWorkspace, getWorkspaceHistory,
     deleteWorkspace, configureAutoSnapshots, saveAutoSnapshot, setLocal, localState, enqueue };
 }

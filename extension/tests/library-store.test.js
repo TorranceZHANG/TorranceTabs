@@ -32,6 +32,20 @@ function backup() {
     workspaces: [workspace('w1', '导入工作区'), workspace('w2', '新增工作区', 'https://two.test/')] };
 }
 
+test('快捷提醒开关串行更新最新设置，保留已提交的分组规则并校验布尔值', async () => {
+  const { data, store } = fixture();
+  const saved = store.saveSettings({ enabled: true, rules: [rule('https://latest.test/')] });
+  const toggled = store.setDuplicatePromptEnabled(false);
+  await Promise.all([saved, toggled]);
+  assert.equal(data.settings.enabled, true);
+  assert.equal(data.settings.duplicatePromptEnabled, false);
+  assert.deepEqual(data.settings.rules.map(item => item.prefix), ['https://latest.test/']);
+  await store.setDuplicatePromptEnabled(true);
+  assert.equal(data.settings.duplicatePromptEnabled, true);
+  await assert.rejects(store.setDuplicatePromptEnabled('false'), /布尔值/);
+  assert.equal(data.settings.duplicatePromptEnabled, true);
+});
+
 test('merge只添加缺少项，所有冲突保留本机且设置开关不变', async () => {
   const { data, sets, store } = fixture();
   const input = backup();

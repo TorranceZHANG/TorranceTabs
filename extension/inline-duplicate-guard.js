@@ -44,6 +44,11 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}, options =
     catch { return false; }
   }
 
+  async function enabled() {
+    const { settings = DEFAULT_SETTINGS } = await api.storage.local.get({ settings: DEFAULT_SETTINGS });
+    return validateSettings(settings).duplicatePromptEnabled;
+  }
+
   async function eligible(tab) {
     if (!tab || !Number.isInteger(tab.id) || tab.id < 0 || tab.incognito || tab.pinned || tab.splitViewId >= 0) return false;
     try {
@@ -134,7 +139,7 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}, options =
     if (!record || record.phase !== 'installing' || record.installationId !== installationId) return;
     const result = results?.find(item => item.frameId === 0);
     if (error || !result?.documentId || result.result?.url !== record.url
-      || !(await sourceAvailable(record)) || !(await allowed(record.url)) || await promptPaused(record.url)) {
+      || !(await sourceAvailable(record)) || !(await enabled()) || !(await allowed(record.url)) || await promptPaused(record.url)) {
       await dismiss(state, token);
       release(record.source.id);
       return;
@@ -198,7 +203,7 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}, options =
     const record = state.prompts[token];
     if (!record) return false;
     const source = await sourceAvailable(record, record.phase === 'waiting' && !record.documentId);
-    if (!source || !(await allowed(record.url)) || await promptPaused(record.url)) {
+    if (!source || !(await enabled()) || !(await allowed(record.url)) || await promptPaused(record.url)) {
       await dismiss(state, token);
       return false;
     }
@@ -207,7 +212,10 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}, options =
       record.phase = 'waiting';
     }
     if (record.phase === 'shown' && !(await ping(record, token))) { await dismiss(state, token); return false; }
-    if (record.phase === 'waiting' && source.url === record.url && !source.pendingUrl) {
+    // A committed URL can still be loading. Retain the first-navigation watch
+    // until complete instead of installing an overlay that strict document
+    // checks would immediately discard. Keep those checks strict for reloads.
+    if (record.phase === 'waiting' && source.url === record.url && !source.pendingUrl && source.status !== 'loading') {
       record.phase = 'installing';
       record.attempts++;
       record.installationId = crypto.randomUUID();
@@ -377,11 +385,19 @@ export function createInlineDuplicateGuard(api, onReleased = () => {}, options =
     await save(state);
     return await check(added, state) || previous;
   });
-  const permissionsChanged = () => enqueue(async () => {
+  const permissionsChanged = (forceDisabled = false) => enqueue(async () => {
     const state = await load();
     const { settings = DEFAULT_SETTINGS } = await api.storage.local.get({ settings: DEFAULT_SETTINGS });
-    const enabled = validateSettings(settings).duplicatePromptEnabled;
+    // Remember an observed off transition even if settings are re-enabled
+    // while an older observation is still ahead of this cleanup in the queue.
+    const enabled = forceDisabled !== true && validateSettings(settings).duplicatePromptEnabled;
     const released = [];
+    if (!enabled) {
+      for (const [id, entry] of Object.entries(state.watch)) {
+        if (entry.stage === 'watching') { delete state.watch[id]; released.push(Number(id)); }
+      }
+      await save(state);
+    }
     for (const [token, record] of Object.entries(state.prompts)) {
       if (!enabled || !(await allowed(record.url))) { released.push(record.source.id); await dismiss(state, token); }
     }

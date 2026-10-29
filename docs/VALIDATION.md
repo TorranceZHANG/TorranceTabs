@@ -1,54 +1,40 @@
-# 1.8.0 验证记录
+# 1.8.1 验证记录
 
-- 基线：`5d6fe946cff2981ec9e5529151a8b3d7aa3a767c`（1.7.2）。原生 ES Modules / Manifest V3，无新增生产依赖；无额外构建 flags。
-- 源码内容指纹 SHA-256：`7a87b911b346327e59c6904ed191014009502d9423aac2f30d315e2b38eb4aa9`。相对路径→文件 SHA-256 映射排序、紧凑 JSON 后再取 SHA-256；排除 `.git`、`dist`、`__pycache__`、`node_modules`、`.pyc` 和本记录。
-- 已核对 56 个生产文件，安装 ZIP 与商店 ZIP 逐文件均与源码一致；不含测试、预览服务器或模拟桩。
+- 基线：`d4865d9069fda2edabfaddd26670352ed46cf811`（1.8.0）加本次 patch。原生 ES Modules / Manifest V3；无新增依赖、权限或构建 flags，无新标签页接管。
+- 源码内容指纹 SHA-256：`ef9e023114b9230405a903a7f155a327b3139526df3bd5ee37fbfcea8b1111c6`。相对路径→SHA-256 映射排序、紧凑 JSON 后取摘要；排除 `.git`、`dist`、`__pycache__`、`node_modules`、`.pyc` 和本记录。
+- 两种 ZIP 的 CRC、条目和 57 个生产文件均核对，与源码逐字节一致；本机和 zhr 产物摘要一致。
 
 | 产物 | 条目数 | SHA-256 |
 | --- | --- | --- |
-| TorranceTabs-v1.8.0.zip | 62 | `cc9e95b568b45a1dc106d2d390d2d249bfeedabb34af3c70e93b0480e50a059b` |
-| TorranceTabs-store-v1.8.0.zip | 56 | `c5a5d6c6908cf32cf752369deaafab5e3df483d037c72662283cc980ff62f7b2` |
+| TorranceTabs-v1.8.1.zip | 63 | `bc0adecc3ad6455e66e15fd08f8ef7692a7541fb2d4db1b49fe9cad5c2b4b777` |
+| TorranceTabs-store-v1.8.1.zip | 57 | `d458f918ca00135333fab4fdead3be682c499908cb90418b0be2a9fd152ee3d0` |
+
+## 根因及回归
+
+网址已提交但 Chrome 仍报告 `loading` 时，旧代码即开始注入；随后安装完成检查或下一次 updated 的严格稳定性检查会永久取消提醒。首次加载完成后已无观察记录，不能补显示。先新增回归，在修改前以退出码 1 复现；修复后等待首次加载完成再注入，不放宽切换/删除前的导航与文档检查。
+
+新增回归覆盖已提交且加载中的新页、about:blank→pending→committed loading→complete、关闭后取消等待/已有浮层/在途注入、旧配置默认开启，以及快速关闭再开启不复活旧记录。后台保留关闭事件快照；之后新建页正常提示。快捷开关只在共享写队列内更改提醒字段，保留最新分组规则；普通网页无权调用该 RPC。
 
 ## 构建与测试
 
 | 环境 | 实际命令 | 结果 |
 | --- | --- | --- |
-| macOS：`/Users/torrance/.nvm/versions/node/v22.22.3/bin/node` 22.22.3，Homebrew Python 3.13.7 | `make check test package` | 退出 0；210 项扩展测试、21 项安装器/商店包测试通过；0 失败、0 跳过 |
-| zhr Linux：`/usr/local/bin/node` 22.9.0，`/usr/bin/python3` 3.6.8 | `make check test package` | 退出 0；210 项扩展测试、21 项安装器/商店包测试通过；0 失败、0 跳过 |
-| 两机 | 两个 ZIP 的 SHA-256、CRC、条目与生产源码比较 | 退出 0；字节一致 |
+| macOS：`/Users/torrance/.nvm/versions/node/v22.22.3/bin/node` 22.22.3；Homebrew Python 3.13.7 | `make check test package` | 退出 0；219 项扩展 + 21 项 Python 测试通过，0 失败、0 跳过 |
+| zhr Linux：`/usr/local/bin/node` 22.9.0；`/usr/bin/python3` 3.6.8 | `make check test package` | 退出 0；219 项扩展 + 21 项 Python 测试通过，0 失败、0 跳过 |
+| 独立 Expert：Node 22.22.3 | `cd extension && node --test tests/inline-duplicate-guard.test.js tests/background.test.js tests/library-store.test.js tests/prompt-control.test.js` | 退出 0；42 通过，0 失败、0 跳过 |
 
-本机完整日志：维护工作区 `outputs/TorranceTabs-v1.8.0-local-validation.log`。zhr 日志：仓库外 `/home/haoming.zhr/code/TorranceTabs-v1.8.0-validation.log`。最终仅补全本验证文档；生产文件与被验证 stage 逐字节复核后提交。传输和 Git 推送通过 SSH zhr，不使用 scp。
+本机日志：`/tmp/TorranceTabs-v1.8.1-local-validation.log`。zhr 日志：`/home/haoming.zhr/code/TorranceTabs-v1.8.1-validation.log`。独立审查日志：`/tmp/TorranceTabs-v1.8.1-expert-review.log`。源码经 SSH stdin 传输，107 个文件摘要校验通过；不使用 scp。最终仅补本文档，生产代码与被验证 stage 一致。
 
-## 界面验证
+## 界面和审查
 
-Chrome 中加载实际 HTML/CSS/JS 和后台模块，使用合成的内存 Chrome API；没有修改真实标签、用户配置或同步云端。看板、设置、工具箱、去重页、侧栏各在 320/390/1024px 检查；专用快捷弹窗在 400px 检查。16 组均无横向溢出。
+Chrome 打开实际快捷面板 HTML/CSS/JS，使用合成内存 Chrome API，无真实标签删除、配置更改或权限申请。实测默认开启→关闭→开启、状态文案、浅色/深色外观；文档内容宽度与 scrollWidth 均为 400px，无横向溢出。截图：`/tmp/TorranceTabs-v1.8.1-prompt-control.png`，仅示例数据。
 
-实际交互覆盖：跨来源搜索、方向键定位、深色和紧凑偏好；重复清单预览及关闭一份合成副本；工作区更新/历史列表；历史恢复预览（1 项缺失、1 项复用）及执行；当前浏览器快照；同步启用说明、仅上传所选外观、预览与应用。
+独立 Expert 审查已关闭快速关/开遗漏关闭事件的 P2，以及响应失败时误称原设置保留的文案问题。最终审查无阻断项；Lead 亲自运行关键回归及全量测试。
 
-额外延迟 Promise 测试直接执行生产 UI handler，覆盖范围/设备/section 切换后拒绝旧响应、主题和密度共锁。按 URL 串行打开保存结果的测试验证 3 次并发只创建 1 个页面；侧栏 API fake 覆盖不支持、拒权、配置失败、打开失败及正确降级到新标签看板。
+## 兼容和未验证范围
 
-尺寸与交互记录：`outputs/TorranceTabs-v1.8.0-ui-validation.json`。商店截图为 640×400 的真实界面配合成数据，没有内部链接。浏览器控制台出现的沉浸式翻译扩展联网错误与项目无关，未更改该扩展。
+沿用已有 `settings.duplicatePromptEnabled` 字段，缺省为 true，尊重用户已保存的 false。快捷面板立即保存；设置页同名字段仍随整份表单保存。关闭取消已有/待显示提醒，不影响自动分组或手动清理。未授权时显示提示与设置入口，不隐式申请权限。
 
-## 独立审查与问题收口
+长时间不完成加载的网页会继续等待；固定、无痕、分屏、共享页及例外/暂停站点继续跳过。本次未执行真实已加载扩展的原生端到端联调；代码文件更新后仍需在 Chrome 扩展管理页重新加载。合成浏览器 API 测试不能替代平台实际行为。原生侧栏、跨设备同步及商店审核未作为本次验证范围。
 
-Expert 初审发现 4 个数据边界问题，修复后全部关闭：统一 1 MiB 历史/快照预算与最旧淘汰、旧超额数据仍能净缩减、删除/覆盖导入原子清孤立历史、降低保留数立即裁剪。独立复验连续 8 份约 445 KB 快照稳定轮转，保持最新版本；9 组边界检查通过，针对性 30 项测试通过，退出 0。
-
-Reviewer 初审发现的在途撤权/导航、undo 后策略变化、共享目标试跑差异均修复。删除前直接复核权限、开关、暂停、文档与导航，清理每次删除前重读规则/allowlist；变化立即停止并结算记录。定向 79 项通过，退出 0。
-
-UI Reviewer 发现的过期预览、并发新建、偏好覆盖、侧栏降级及未保存草稿保护已修复；延迟 handler/search/panel 合计 10 项通过，退出 0。最终独立核对两个重建 ZIP 与 56 个生产源文件完全一致，本地资源引用无缺失，恰有 4 个建议快捷键，无新标签页接管。审查收口无剩余 P1/P2。
-
-## 数据与权限兼容
-
-- library schema 1 与旧 workspace 结构保留。备份 v2 新增外观与例外名单，接受 v1；v1 未提供的新字段保留本机值。
-- 历史/快照合计 1 MiB，单份超限明确拒绝且不截断链接。新增本地预算 5 MiB，旧超额数据允许逐步缩减。不会自动迁移或覆盖 Chrome 配置文件。
-- 自动快照与同步默认关闭。同步采用独立设备槽位、最大 8 台、每台 7 KiB；上传/应用都为显式操作，禁用不访问同步存储，不删除远端已有副本。
-- 新增 alarms；sidePanel 及原 scripting/网站访问权均可选。保留 4 个原默认快捷键，新增命令不默认绑定。不申请 history/cookies，不读取正文，不调用云端 AI。
-- 本机文件更新沿用原加载目录，备份旧文件；用户仍需在 Chrome 重新加载并刷新已打开工具页。
-
-## 未验证与外部环节
-
-没有两台真实 Chrome 的同步传播、原生 Side Panel/Omnibox、操作系统配额故障或 MV3 强制终止的端到端验证。未保存草稿的 beforeunload 已静态审查；自动化程序刷新未显示原生对话框，不记为实测通过。测试使用 mock，不能替代这些平台行为。
-
-跨机器同步依赖相同扩展身份、Chrome 账号和同步设置；不同 ID 解压版不能互通，不通过添加 manifest key 破坏现有身份。商店包、图标、截图、文案和隐私说明已准备，但浏览器工具对开发者后台返回 Not allowed，未上传或提交；开发者账号、必要费用、协议与商店审核由账号所有者完成。
-
-GitHub CI/Release 与公开资产摘要在推送后单独核对。不将此前受网络限制的公开 ZIP 下载记录当作本版本验证通过。
+GitHub CI/Release 在推送后另行核对；没有将受网络限制的公开 ZIP 下载记为通过。保留原安装目录和用户配置，提供更新前文件备份。

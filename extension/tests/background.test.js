@@ -100,10 +100,29 @@ test('新增扩展消息返回明确字段，网页不能直接改策略或搜�
   assert.deepEqual(paused, { ok: true, tabId: 1, paused: true });
   const result = await message({ type: 'SEARCH_QUERY', query: 'example', source: 'tab' });
   assert.equal(result.ok, true); assert.equal(result.entries.length, 1);
-  for (const type of ['SEARCH_QUERY', 'DUPLICATE_ALLOWLIST_SAVE', 'SNAPSHOT_CAPTURE', 'SYNC_UPLOAD']) {
+  const toggle = await message({ type: 'DUPLICATE_PROMPT_SET_ENABLED', enabled: false });
+  assert.equal(toggle.ok, true);
+  assert.equal(toggle.settings.duplicatePromptEnabled, false);
+  assert.equal(toggle.settings.rules.length, 1);
+  for (const type of ['SEARCH_QUERY', 'DUPLICATE_ALLOWLIST_SAVE', 'SNAPSHOT_CAPTURE', 'SYNC_UPLOAD', 'DUPLICATE_PROMPT_SET_ENABLED']) {
     const denied = await message({ type }, { id: api.runtime.id, url: URL, tab: { id: 1 } });
     assert.equal(denied.ok, false); assert.match(denied.error, /扩展页面/);
   }
+});
+
+test('关闭设置事件携带false快照，当前配置已重新开启也不复活旧加载提醒', async t => {
+  const { state, api } = await fixture(t);
+  Object.assign(state.tabs.get(2), { url: URL, status: 'loading' });
+  api.tabs.onCreated.emit(state.tabs.get(2));
+  await settle();
+  assert.equal(state.session.inlineDuplicateState.watch[2].stage, 'prompt');
+  // Fixture reads always return enabled=true, as if a newer save has completed.
+  api.storage.onChanged.emit({ settings: { newValue: { enabled: true, duplicatePromptEnabled: false, rules: [] } } }, 'local');
+  await settle();
+  state.tabs.get(2).status = 'complete';
+  api.tabs.onUpdated.emit(2, { status: 'complete' });
+  await settle();
+  assert.equal(state.overlays.has(2), false);
 });
 
 test('旧创建事件延迟返回blank后，不能覆盖较新重复事件的分组抑制', async t => {

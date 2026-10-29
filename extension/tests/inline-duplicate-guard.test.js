@@ -111,6 +111,95 @@ test('等待首次目的地提交后注入，保留新标签只清理浮层，�
   assert.equal(await guard.updated(2), false);
 });
 
+test('新页网址已提交但仍在加载时保留观察，加载完成后显示提醒', async () => {
+  for (const pending of [false, true]) {
+    const { state, guard, record } = fixture([{ id: 1, url: URL, status: 'complete' },
+      { id: 2, url: pending ? 'about:blank' : URL, status: 'loading', ...(pending ? { pendingUrl: URL } : {}) }]);
+    assert.equal(await guard.created({ id: 2 }), true);
+    await settle();
+    assert.equal(state.overlays.size, 0);
+    Object.assign(state.tabs.get(2), { url: URL });
+    delete state.tabs.get(2).pendingUrl;
+    await guard.updated(2);
+    await settle();
+    assert.equal(state.overlays.size, 0);
+    Object.assign(state.tabs.get(2), { status: 'complete' });
+    await guard.updated(2);
+    await settle();
+    assert.equal(record()?.[1].phase, 'shown', `pending=${pending}`);
+    assert.equal(state.overlays.has(2), true);
+    assert.equal(state.calls.filter(call => call.type === 'inject').length, 1);
+    assert.equal(state.calls.some(call => ['create', 'focus', 'update', 'remove'].includes(call.type)), false);
+  }
+});
+
+test('关闭提醒会清除等待和已展示提醒，在途注入也不能在关闭后SHOW', async () => {
+  const waiting = fixture([{ id: 1, url: URL }, { id: 2, url: 'about:blank' }]);
+  await waiting.guard.created({ id: 2 });
+  waiting.state.local.settings.duplicatePromptEnabled = false;
+  assert.deepEqual(await waiting.guard.permissionsChanged(), [2]);
+  waiting.state.local.settings.duplicatePromptEnabled = true;
+  waiting.state.tabs.get(2).url = URL;
+  assert.equal(await waiting.guard.updated(2), false);
+  assert.equal(waiting.state.overlays.size, 0);
+
+  const shown = fixture();
+  await shown.start();
+  shown.state.local.settings.duplicatePromptEnabled = false;
+  assert.deepEqual(await shown.guard.permissionsChanged(), [2]);
+  assert.equal(shown.state.overlays.size, 0);
+
+  const delayed = fixture();
+  const pending = gate();
+  delayed.state.onInject = () => pending.promise;
+  await delayed.guard.created({ id: 2 });
+  delayed.state.local.settings.duplicatePromptEnabled = false;
+  pending.resolve();
+  await settle(); // Do not rely on the storage event reaching the queue first.
+  assert.equal(delayed.state.overlays.size, 0);
+  assert.deepEqual(delayed.state.released, [2]);
+  assert.equal(delayed.state.calls.some(call => ['focus', 'update', 'remove'].includes(call.type)), false);
+});
+
+test('旧配置缺少提醒字段默认开启，手动关闭后新建页不观察不注入', async () => {
+  const current = fixture();
+  delete current.state.local.settings.duplicatePromptEnabled;
+  await current.start();
+  assert.equal(current.state.overlays.has(2), true);
+  current.state.local.settings.duplicatePromptEnabled = false;
+  await current.guard.permissionsChanged();
+  current.state.tabs.set(3, { id: 3, windowId: 1, groupId: -1, url: URL });
+  assert.equal(await current.guard.created({ id: 3 }), false);
+  assert.equal(current.state.calls.filter(call => call.type === 'inject').length, 1);
+});
+
+test('关闭后快速重开保留关闭事件，旧加载记录不复活、之后新建页仍能提醒', async () => {
+  const current = fixture([{ id: 1, url: URL }, { id: 2, url: URL, status: 'loading' }]);
+  await current.guard.created({ id: 2 });
+  const pending = gate();
+  const started = gate();
+  let blocked = false;
+  current.state.onGet = async id => {
+    if (id === 2 && !blocked) { blocked = true; started.resolve(); await pending.promise; }
+  };
+  const updating = current.guard.updated(2);
+  await started.promise;
+  current.state.local.settings.duplicatePromptEnabled = false;
+  const disabled = current.guard.permissionsChanged(true);
+  current.state.local.settings.duplicatePromptEnabled = true;
+  current.state.tabs.set(3, { id: 3, windowId: 1, groupId: -1, url: URL, status: 'complete' });
+  current.state.docs.set(3, 'doc-3');
+  const newer = current.guard.created({ id: 3 });
+  pending.resolve();
+  await Promise.all([updating, disabled, newer]);
+  await settle();
+  current.state.tabs.get(2).status = 'complete';
+  await current.guard.updated(2);
+  await settle();
+  assert.equal(current.state.overlays.has(2), false);
+  assert.equal(current.state.overlays.has(3), true);
+});
+
 test('注入延迟不阻塞观察，期间导航/移除/撤销后晚结果不能SHOW或复活状态', async () => {
   for (const action of ['navigate', 'remove', 'permission']) {
     const { state, guard } = fixture();
